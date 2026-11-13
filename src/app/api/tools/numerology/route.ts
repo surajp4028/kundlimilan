@@ -8,7 +8,7 @@ import { birthSchema } from "@/lib/astro";
 
 export const POST = route(async (req: NextRequest) => {
   await assertTool("tool_numerology", "Numerology");
-  const body = await readJson(req, z.object({ name: birthSchema.shape.name, date: birthSchema.shape.date, lang: z.enum(["en", "hi"]).default("en") }));
+  const body = await readJson(req, z.object({ name: birthSchema.shape.name, date: birthSchema.shape.date, lang: z.enum(["en", "hi"]).default("hi") }));
   const user = await getSessionUser();
   const who = { userId: user?.id ?? null, ip: getClientIp(req.headers) };
   await chargeRun(who);

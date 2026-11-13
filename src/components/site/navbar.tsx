@@ -57,9 +57,9 @@ export function Navbar() {
               <Link
                 key={l.href}
                 href={l.href}
-                className={cn("relative rounded-full px-3.5 py-2 text-sm text-ivory/80 transition hover:text-ivory", path.startsWith(l.href) && "text-gold")}
+                className={cn("relative rounded-full px-3.5 py-2 text-sm transition", path.startsWith(l.href) ? "font-semibold text-ongold" : "text-ivory/80 hover:text-ivory")}
               >
-                {path.startsWith(l.href) && <motion.span layoutId="nav-pill" className="absolute inset-0 -z-10 rounded-full bg-gold/10 ring-1 ring-gold/30" />}
+                {path.startsWith(l.href) && <motion.span layoutId="nav-pill" transition={{ type: "spring", stiffness: 380, damping: 32 }} className="absolute inset-0 -z-10 rounded-full border border-[#c58b1d] bg-gradient-to-b from-gold-light to-gold-bright shadow-gold" />}
                 {l.label}
               </Link>
             ))}

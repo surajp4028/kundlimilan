@@ -25,7 +25,7 @@ export const POST = route(async (req: NextRequest) => {
     z.object({
       service: z.string().regex(/^[a-z0-9-]{2,48}$/),
       input: orderInputSchema,
-      language: z.string().regex(/^[a-z]{2}$/).default("en"),
+      language: z.string().regex(/^[a-z]{2}$/).default("hi"),
       coupon: z.string().trim().max(32).optional().nullable(),
     }),
   );

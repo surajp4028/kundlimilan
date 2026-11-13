@@ -8,7 +8,7 @@ import { birthSchema } from "@/lib/astro";
 
 export const POST = route(async (req: NextRequest) => {
   await assertTool("tool_matching", "Kundli Milan");
-  const body = await readJson(req, z.object({ boy: birthSchema, girl: birthSchema, lang: z.enum(["en", "hi"]).default("en") }));
+  const body = await readJson(req, z.object({ boy: birthSchema, girl: birthSchema, lang: z.enum(["en", "hi"]).default("hi") }));
   const user = await getSessionUser();
   const who = { userId: user?.id ?? null, ip: getClientIp(req.headers) };
   await chargeRun(who);

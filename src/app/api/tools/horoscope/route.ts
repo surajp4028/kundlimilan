@@ -11,7 +11,7 @@ export const GET = route(async (req: NextRequest) => {
   const sp = req.nextUrl.searchParams;
   const sign = (sp.get("sign") || "").toLowerCase();
   const period = (sp.get("period") || "today") as HoroPeriod;
-  const lang = sp.get("lang") === "hi" ? "hi" : "en";
+  const lang = sp.get("lang") === "en" ? "en" : "hi";
   if (!isSign(sign)) throw new ApiError(422, "VALIDATION", "Choose a zodiac sign");
   if (!HORO_PERIODS.includes(period)) throw new ApiError(422, "VALIDATION", "Invalid period");
   const rl = await rateLimit(`horo:${getClientIp(req.headers)}`, 120, 3600);

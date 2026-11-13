@@ -49,7 +49,7 @@ export type JsonOpts = {
 /** POST a JSON endpoint (wallet token). Identical requests are served from the encrypted cache. */
 export async function astroJson<T = unknown>(endpoint: string, body: Record<string, unknown>, o: JsonOpts): Promise<T> {
   if (!ENDPOINT_RE.test(endpoint)) throw new Error("bad astro endpoint");
-  const lang = o.lang && /^[a-z]{2}$/.test(o.lang) ? o.lang : "en";
+  const lang = o.lang && /^[a-z]{2}$/.test(o.lang) ? o.lang : "hi";
   const key = sha256(`astro:v1:${endpoint}:${lang}:${JSON.stringify(body)}`);
   const ttl = o.ttl ?? (await getNumberSetting("astro_cache_days", 30)) * 86400;
 
