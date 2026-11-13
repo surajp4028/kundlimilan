@@ -56,7 +56,7 @@ export function HoroscopeTool() {
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-8">
       <div className="sticky top-[4.25rem] z-20 -mx-4 bg-[#fdf8f0]/92 px-4 pb-3 pt-2 backdrop-blur-xl sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:backdrop-blur-none">
-        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:px-0">
+        <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pb-2 sm:mx-0 sm:flex-wrap sm:justify-center sm:px-0">
           {SIGNS.map((x) => (
             <button
               key={x.key}

@@ -72,7 +72,7 @@ export function SettingsView({ initialTab }: { initialTab?: string }) {
   return (
     <>
       <PageHeader icon={<Settings />} title="Settings & branding" sub="Everything here is editable without a deploy. Secrets (API keys, passwords) stay in the server's .env and are never shown." />
-      <div className="no-scrollbar -mx-3 mb-4 flex gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+      <div className="no-scrollbar -mx-3 mb-4 flex gap-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-3 sm:mx-0 sm:px-0">
         {groups.map((g) => {
           const I = GROUP_ICON[g] || Settings;
           const n = (data?.schema || []).filter((d) => d.group === g && d.key in draft).length;

@@ -70,7 +70,7 @@ export function BirthFields({ value, onChange, errors, idPrefix, title, accent, 
         </div>
       )}
       {user && profiles.length > 0 && (
-        <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <div className="no-scrollbar -mx-1 flex gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1">
           {profiles.map((p) => {
             const on = value.name === p.name && value.date === p.date && value.time === p.time;
             return (

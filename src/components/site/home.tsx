@@ -71,7 +71,7 @@ export function Home({ services }: { services: ServiceCardData[] }) {
               )}
             </motion.div>
             {tools.length > 0 && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="no-scrollbar -mx-5 mt-7 flex gap-2 overflow-x-auto px-5 pb-1 sm:flex-wrap sm:justify-center lg:mx-0 lg:justify-start lg:px-0">
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.9 }} className="no-scrollbar -mx-5 mt-7 flex gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain px-5 pb-1 sm:flex-wrap sm:justify-center lg:mx-0 lg:justify-start lg:px-0">
                 {tools.filter((t) => t.href !== "/kundli").map((t) => (
                   <Link key={t.href} href={t.href} className="inline-flex shrink-0 items-center gap-2 rounded-full border border-ink/[.08] bg-white px-4 py-2.5 text-sm text-ivory-2 shadow-sm transition hover:-translate-y-0.5 hover:border-gold/50 hover:text-ivory hover:shadow-gold">
                     <t.icon className="h-4 w-4 text-gold" /> {t.t}
@@ -115,7 +115,7 @@ export function Home({ services }: { services: ServiceCardData[] }) {
               <h2 className="display mt-2 text-3xl text-ivory sm:text-4xl">Start with your <em className="gold-text not-italic">chart</em></h2>
             </div>
           </div>
-          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-5">
+          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-5">
             {tools.map((t, i) => (
               <motion.div key={t.href} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }} className="w-[68%] shrink-0 snap-start min-[480px]:w-[44%] sm:w-auto">
                 <Link href={t.href} className="lux-card group flex h-full flex-col overflow-hidden p-5">
@@ -270,7 +270,7 @@ function RashiCarousel() {
     </Link>
   );
   return (
-    <div className="no-scrollbar -mx-4 overflow-x-auto sm:mx-0">
+    <div className="no-scrollbar -mx-4 overflow-x-auto overflow-y-hidden overscroll-x-contain sm:mx-0">
       <div className="mask-fade-x w-max">
         <div className="marquee flex w-max gap-3 px-4 py-3" style={{ ["--marquee" as string]: "60s" }}>
           {SIGNS.map((z) => card(z, z.key))}

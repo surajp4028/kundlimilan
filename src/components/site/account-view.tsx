@@ -95,7 +95,7 @@ export function AccountView() {
       </div>
 
       <div className="mt-5 grid gap-5 lg:grid-cols-[230px_1fr]">
-        <nav className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 lg:mx-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:px-0">
+        <nav className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 lg:mx-0 lg:flex-col lg:gap-1 lg:overflow-visible lg:px-0">
           {NAV.map((n) => (
             <button
               key={n.key}

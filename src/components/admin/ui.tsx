@@ -177,7 +177,7 @@ export function Btn({ children, onClick, variant = "outline", disabled, classNam
 
 export function Table({ head, children, loading, empty, colSpan, minWidth = 880 }: { head: string[]; children: ReactNode; loading?: boolean; empty?: boolean; colSpan?: number; minWidth?: number }) {
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto overflow-y-hidden overscroll-x-contain">
       <table className="w-full text-left text-[13px] text-ink" style={{ minWidth }}>
         <thead>
           <tr className="border-b border-line bg-paper/80 text-[11px] font-bold uppercase tracking-wider text-muted">
@@ -320,7 +320,7 @@ export function Toggle({ on, onChange, label, disabled }: { on: boolean; onChang
 /** Filter chips with counts. */
 export function Chips<T extends string>({ value, onChange, items }: { value: T; onChange: (v: T) => void; items: { value: T; label: string; count?: number; tone?: string }[] }) {
   return (
-    <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
+    <div className="no-scrollbar -mx-1 flex gap-1.5 overflow-x-auto overflow-y-hidden overscroll-x-contain px-1 pb-1">
       {items.map((i) => (
         <button
           key={i.value}

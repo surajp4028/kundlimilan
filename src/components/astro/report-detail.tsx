@@ -91,7 +91,7 @@ export function ReportDetail({ s, others }: { s: ServiceCardData & { description
           {s.inputKind === "couple" && (
             <section className="mt-10">
               <p className="eyebrow">Sample pages</p>
-              <div className="no-scrollbar -mx-4 mt-5 flex gap-3 overflow-x-auto px-4 pb-2 sm:mx-0 sm:px-0">
+              <div className="no-scrollbar -mx-4 mt-5 flex gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pb-2 sm:mx-0 sm:px-0">
                 {["/samples/match-p1.jpg", "/samples/match-p5.jpg", "/samples/match-p14.jpg", "/samples/match-p27.jpg"].map((src) => (
                   <div key={src} className="relative h-64 w-48 shrink-0 overflow-hidden rounded-xl border border-gold/25 shadow-deep">
                     <Image src={src} alt="Sample page" fill sizes="192px" className="object-cover" />

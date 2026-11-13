@@ -244,7 +244,7 @@ function KundliResult({ k, input, lang }: { k: Kundli; input: BirthDraft; lang: 
       </div>
       <div className="lux-card p-5 sm:p-7">
         <h3 className="font-display text-2xl text-ivory">Planetary positions</h3>
-        <div className="mt-4 hidden overflow-x-auto sm:block">
+        <div className="mt-4 hidden overflow-x-auto overflow-y-hidden overscroll-x-contain sm:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-[11px] uppercase tracking-[.14em] text-mist">

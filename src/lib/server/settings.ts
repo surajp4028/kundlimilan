@@ -31,7 +31,7 @@ export const SETTING_DEFS = {
   company_address: d("Branding", "Address", "India", 200, true, "textarea"),
   support_email: d("Branding", "Support email", "support@astro.in", 120, true, "email"),
   support_phone: d("Branding", "Support phone", "+91 90000 00000", 20, true),
-  whatsapp: d("Branding", "WhatsApp number (digits)", "", 15, true),
+  whatsapp: d("Branding", "WhatsApp number (with country code, digits only — empty hides the button)", "917982624533", 15, true),
   social_instagram: d("Branding", "Instagram URL", "", 200, true, "url"),
   social_youtube: d("Branding", "YouTube URL", "", 200, true, "url"),
   social_facebook: d("Branding", "Facebook URL", "", 200, true, "url"),

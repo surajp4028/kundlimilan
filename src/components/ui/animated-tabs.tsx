@@ -26,7 +26,7 @@ export function AnimatedTabs<T extends string>({
   inactiveTextClassName?: string;
 }) {
   return (
-    <div role="tablist" className={cn("relative flex items-center gap-1 overflow-x-auto no-scrollbar", className)}>
+    <div role="tablist" className={cn("relative flex items-center gap-1 overflow-x-auto overflow-y-hidden overscroll-x-contain no-scrollbar", className)}>
       {tabs.map((t) => {
         const active = t.value === value;
         return (

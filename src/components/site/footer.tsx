@@ -46,7 +46,7 @@ export function Footer() {
             <li><a href={`mailto:${s.support_email}`} className="inline-flex items-center gap-2 hover:text-[#f7d27a]"><Mail className="h-4 w-4 text-[#f7d27a]" /> {s.support_email}</a></li>
             <li><a href={`tel:${s.support_phone.replace(/[^\d+]/g, "")}`} className="inline-flex items-center gap-2 hover:text-[#f7d27a]"><Phone className="h-4 w-4 text-[#f7d27a]" /> {s.support_phone}</a></li>
             {s.whatsapp && (
-              <li><a href={`https://wa.me/${s.whatsapp}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 hover:text-[#f7d27a]"><MessageCircle className="h-4 w-4 text-[#f7d27a]" /> WhatsApp</a></li>
+              <li><a href={`https://wa.me/${String(s.whatsapp).replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 hover:text-[#f7d27a]"><MessageCircle className="h-4 w-4 text-[#f7d27a]" /> WhatsApp</a></li>
             )}
             <li className="pt-2 text-xs leading-relaxed text-mist">{s.company_address}</li>
           </ul>

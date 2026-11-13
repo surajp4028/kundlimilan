@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { motion } from "motion/react";
 import { MobileDock, Navbar } from "./navbar";
 import { Footer } from "./footer";
+import { WhatsAppFab } from "./whatsapp-fab";
 import { cn } from "@/lib/utils";
 
 /** Every public page: night sky + stars, navbar, content, footer, mobile dock. */
@@ -18,6 +19,7 @@ export function SiteShell({ children, footer = true }: { children: ReactNode; fo
         <main className={cn(!footer && "pb-dock")}>{children}</main>
         {footer && <Footer />}
         <MobileDock />
+        <WhatsAppFab />
       </div>
     </div>
   );
