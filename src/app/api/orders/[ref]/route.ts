@@ -1,8 +1,11 @@
 import { ApiError, ok, route } from "@/lib/server/http";
 import { requireUser } from "@/lib/server/session";
-import { confirmPayment, generateReport, orderForUser, publicOrder } from "@/lib/server/orders";
+import { STALE_GENERATING_SECONDS, confirmPayment, background, generateReport, orderForUser, publicOrder } from "@/lib/server/orders";
 import { fetchOrderPayments } from "@/lib/server/payments/razorpay";
 import { rateLimit } from "@/lib/server/ratelimit";
+
+// report generation (AstrologyAPI can take ~60 s) runs after the response — give it time to finish on Vercel
+export const maxDuration = 300;
 
 type Ctx = { params: Promise<{ ref: string }> };
 
@@ -28,8 +31,13 @@ export const GET = route<Ctx>(async (_req, { params }) => {
       }
       o = (await orderForUser(o.order_ref, user.uid))!;
     }
-  } else if (o.payment_status === "paid" && o.report_status === "not_started" && age > 30_000) {
-    void generateReport(o.order_ref, "status-poll").catch(() => {});
+  } else if (
+    o.payment_status === "paid" &&
+    ((o.report_status === "not_started" && age > 30_000) ||
+      (o.report_status === "generating" && o.report_started_at && Date.now() - new Date(o.report_started_at).getTime() > STALE_GENERATING_SECONDS * 1000))
+  ) {
+    const ref = o.order_ref;
+    background("report", () => generateReport(ref, "status-poll"));
   }
   return ok({ order: await publicOrder(o) });
 });

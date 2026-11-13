@@ -15,6 +15,29 @@ import { astroPdf, downloadProviderPdf } from "./astro/client";
 import { putObject, userKey } from "./storage";
 import { sendResendEmail } from "./notify";
 import { env } from "./env";
+import { after } from "next/server";
+
+/* ---- background work that must survive the response (Vercel keeps the function alive via after()) ---- */
+declare global {
+  var __kmBg: Set<Promise<unknown>> | undefined;
+}
+const pending = (globalThis.__kmBg ??= new Set());
+export function background(label: string, task: () => Promise<unknown>) {
+  const run = () => {
+    const p = task().catch((e) => console.error(`[${label}] failed`, (e as Error).message));
+    pending.add(p);
+    return p.finally(() => pending.delete(p));
+  };
+  try {
+    after(run); // inside a request: runs after the response, function stays alive until done
+  } catch {
+    void run(); // scripts / outside a request
+  }
+}
+/** Scripts call this before exiting so report generation + emails finish. */
+export async function drainBackground() {
+  while (pending.size) await Promise.allSettled([...pending]);
+}
 
 /* =====================================================================
  * Order lifecycle
@@ -122,7 +145,7 @@ export async function confirmPayment(rzpOrderId: string, payment: RzpPayment, so
   if (upd.affectedRows) {
     await markCouponUsed(o.order_ref);
     await audit({ actorType: "system", action: "order.paid", targetType: "order", targetId: o.order_ref, meta: { source, paymentId: payment.id, amount: payment.amount } });
-    void generateReport(o.order_ref, "payment").catch((e) => console.error("[report] generate failed", (e as Error).message));
+    background("report", () => generateReport(o.order_ref, "payment"));
   }
   return { ok: true as const, ref: o.order_ref, firstConfirmation: upd.affectedRows === 1 };
 }
@@ -146,11 +169,29 @@ const retryTimers = new Map<string, NodeJS.Timeout>();
  * Generates (or re-generates) the report for a PAID order. Safe to call repeatedly:
  * an atomic claim makes sure only one worker generates at a time.
  */
+/** A 'generating' claim older than this is treated as abandoned (the function running it died). Keep > route maxDuration. */
+export const STALE_GENERATING_SECONDS = 330;
+
+/** PDF URL from an earlier successful AstrologyAPI call for this order (last 24 h), if any. */
+async function previousPdfUrl(ref: string, endpoint: string): Promise<string | null> {
+  const rows = await query<{ response_enc: string | null }>(
+    "SELECT response_enc FROM payment_logs WHERE order_ref = ? AND provider = 'astrologyapi' AND action = ? AND outcome = 'ok' AND created_at > UTC_TIMESTAMP() - INTERVAL 1 DAY ORDER BY id DESC LIMIT 1",
+    [ref, `pdf.${endpoint}`.slice(0, 48)],
+  );
+  if (!rows[0]?.response_enc) return null;
+  try {
+    const j = JSON.parse(await decrypt(rows[0].response_enc)) as { pdf_url?: string; response?: { pdf_url?: string } };
+    return j.pdf_url || j.response?.pdf_url || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function generateReport(ref: string, by: string): Promise<{ ok: boolean; error?: string }> {
   const claim = await exec(
     `UPDATE orders SET report_status = 'generating', report_attempts = report_attempts + 1, report_started_at = UTC_TIMESTAMP(), report_error = NULL
       WHERE order_ref = ? AND payment_status = 'paid' AND status <> 'refunded'
-        AND (report_status IN ('not_started','failed') OR (report_status = 'generating' AND report_started_at < UTC_TIMESTAMP() - INTERVAL 10 MINUTE))`,
+        AND (report_status IN ('not_started','failed') OR (report_status = 'generating' AND report_started_at < UTC_TIMESTAMP() - INTERVAL ${STALE_GENERATING_SECONDS} SECOND))`,
     [ref],
   );
   if (claim.affectedRows !== 1) return { ok: false, error: "Report is already being generated or isn't due." };
@@ -180,7 +221,10 @@ export async function generateReport(ref: string, by: string): Promise<{ ok: boo
 
   const user = await queryOne<{ id: number }>("SELECT id FROM users WHERE uid = ?", [o.user_uid]);
   const form = buildPdfForm(service.endpoint, input, o.language, await branding());
-  const pdf = await astroPdf(service.endpoint, form, { orderRef: ref, userId: user?.id });
+  // A previous attempt may have got the PDF from AstrologyAPI and then been cut off (e.g. serverless time limit):
+  // reuse that file instead of paying for — and waiting on — a second generation.
+  const reused = await previousPdfUrl(ref, service.endpoint);
+  const pdf = reused ? ({ ok: true, url: reused } as const) : await astroPdf(service.endpoint, form, { orderRef: ref, userId: user?.id });
   if (!pdf.ok) return fail(pdf.error, pdf.retryable);
 
   let bytes: Uint8Array;
@@ -203,7 +247,7 @@ export async function generateReport(ref: string, by: string): Promise<{ ok: boo
   );
   await exec("UPDATE orders SET report_status = 'ready', report_error = NULL, status = IF(status = 'refunded', status, 'completed'), completed_at = UTC_TIMESTAMP() WHERE order_ref = ?", [ref]);
   await audit({ actorType: "system", action: "report.ready", targetType: "order", targetId: ref, meta: { by, bytes: bytes.length } });
-  void notifyReportReady(ref, bytes).catch(() => {});
+  await notifyReportReady(ref, bytes).catch((e) => console.error("[email] report-ready failed", (e as Error).message));
   return { ok: true };
 }
 
@@ -223,15 +267,25 @@ export async function notifyReportReady(ref: string, bytes?: Uint8Array) {
   const base = (process.env.PUBLIC_BASE_URL || env.appUrl).replace(/\/+$/, "");
   const link = `${base}/account?tab=reports`;
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
-  const html = `<div style="font-family:Georgia,serif;background:#0b0820;color:#f4ead2;padding:32px;border-radius:16px;max-width:560px;margin:auto">
-    <div style="letter-spacing:.3em;color:${esc(s.brand_color)};font-size:12px">✦ ${esc(s.site_name)} ✦</div>
-    <h1 style="font-weight:400;font-size:26px;margin:16px 0 8px">Your ${esc(o.title)} is ready</h1>
-    <p style="color:#cfc4ad;line-height:1.6">Namaste ${esc(name)}, your report for <b>${esc(subject)}</b> (order ${esc(ref)}) has been prepared.${bytes && bytes.length < 7_000_000 ? " It is attached to this email and" : " It is"} always available in your account.</p>
-    <a href="${esc(link)}" style="display:inline-block;margin-top:12px;background:${esc(s.brand_color)};color:#1a1206;padding:12px 22px;border-radius:999px;text-decoration:none;font-family:Arial,sans-serif;font-weight:600">Open my reports</a>
-    <p style="color:#8f86a8;font-size:12px;margin-top:28px">${esc(s.footer_note)}</p></div>`;
+  const attach = !!bytes && bytes.length < 7_000_000;
+  const html = `<div style="background:#fbf5ea;padding:24px 12px;font-family:Georgia,'Times New Roman',serif">
+  <div style="max-width:560px;margin:auto;background:#fffdf8;border:1px solid #ecd9b0;border-radius:18px;overflow:hidden">
+    <div style="background:#6e122a;padding:22px 28px;text-align:center">
+      <div style="letter-spacing:.32em;color:#f7d27a;font-size:13px;font-weight:600">✦ ${esc(s.site_name)} ✦</div>
+      <div style="color:#fbe7b8;font-size:13px;margin-top:6px">॥ श्री गणेशाय नमः ॥</div>
+    </div>
+    <div style="height:4px;background:linear-gradient(90deg,#f7d27a,${esc(s.brand_color)},#f7d27a)"></div>
+    <div style="padding:30px 28px;color:#3b0d1a">
+      <h1 style="font-weight:400;font-size:26px;margin:0 0 12px;color:#5a0f22">Your ${esc(o.title)} is ready</h1>
+      <p style="line-height:1.7;font-size:15px;color:#5c3a40;margin:0">Namaste ${esc(name)},<br>your report for <b style="color:#3b0d1a">${esc(subject)}</b> has been prepared.${attach ? " The PDF is attached to this email and is" : " It is"} always available in your account.</p>
+      <table style="margin:20px 0;font-family:Arial,sans-serif;font-size:13px;color:#7a5a5f"><tr><td style="padding:2px 14px 2px 0">Order</td><td style="color:#3b0d1a;font-weight:600">${esc(ref)}</td></tr></table>
+      <a href="${esc(link)}" style="display:inline-block;background:linear-gradient(180deg,#ffe7a8,${esc(s.brand_color)});border:1px solid #c58b1d;color:#4a0d1c;padding:13px 26px;border-radius:999px;text-decoration:none;font-family:Arial,sans-serif;font-weight:700;font-size:14px">Open my reports →</a>
+      <p style="color:#9a7f84;font-size:12px;line-height:1.6;margin:30px 0 0;font-family:Arial,sans-serif">${esc(s.footer_note)}</p>
+    </div>
+  </div></div>`;
   const res = await sendResendEmail({
     to: email, subject: `Your ${o.title} is ready · ${s.site_name}`, html, text: `Your ${o.title} (${ref}) is ready: ${link}`,
-    attachments: bytes && bytes.length < 7_000_000 ? [{ filename: `${o.service_slug}-${ref}.pdf`, content: bytes }] : undefined,
+    attachments: attach && bytes ? [{ filename: `${o.service_slug}-${ref}.pdf`, content: bytes }] : undefined,
   });
   await logProvider({ orderRef: ref, provider: "resend", direction: "outbound", action: "email.report_ready", httpStatus: res.status, outcome: res.ok ? "ok" : "error", request: res.request, response: res.response });
   if (res.ok) await exec("UPDATE orders SET notified_at = UTC_TIMESTAMP() WHERE order_ref = ?", [ref]);

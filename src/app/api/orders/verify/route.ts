@@ -6,6 +6,9 @@ import { verifyCheckoutSignature, fetchPayment, capturePayment } from "@/lib/ser
 import { logProvider } from "@/lib/server/payments/log";
 import { confirmPayment, orderForUser, ORDER_REF_RE } from "@/lib/server/orders";
 
+// report generation (AstrologyAPI can take ~60 s) runs after the response — give it time to finish on Vercel
+export const maxDuration = 300;
+
 /** Checkout success: signature over OUR stored order id, then Razorpay's own record decides. */
 export const POST = route(async (req: NextRequest) => {
   const user = await requireUser();

@@ -10,6 +10,9 @@ import { createRefund, syncRefundsForOrder } from "@/lib/server/payments/refunds
 import { fetchOrderPayments } from "@/lib/server/payments/razorpay";
 import { releaseCoupon } from "@/lib/server/coupons";
 
+// report generation (AstrologyAPI can take ~60 s) runs after the response — give it time to finish on Vercel
+export const maxDuration = 300;
+
 type Ctx = { params: Promise<{ ref: string }> };
 const body = z.discriminatedUnion("action", [
   z.object({ action: z.literal("regenerate") }),

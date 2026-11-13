@@ -7,6 +7,9 @@ import { updateRefundFromWebhook } from "@/lib/server/payments/refunds";
 import { logProvider } from "@/lib/server/payments/log";
 import { confirmPayment } from "@/lib/server/orders";
 
+// report generation (AstrologyAPI can take ~60 s) runs after the response — give it time to finish on Vercel
+export const maxDuration = 300;
+
 /**
  * Razorpay webhook — Dashboard → Webhooks:
  *   URL     https://<domain>/api/payments/razorpay/webhook   Secret: RAZORPAY_WEBHOOK_SECRET

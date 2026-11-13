@@ -9,7 +9,7 @@ import "./_env.mjs";
 
 const { query } = await import("../src/lib/server/db.ts");
 const { fetchOrderPayments } = await import("../src/lib/server/payments/razorpay.ts");
-const { confirmPayment, generateReport } = await import("../src/lib/server/orders.ts");
+const { confirmPayment, generateReport, drainBackground } = await import("../src/lib/server/orders.ts");
 
 const ref = process.argv[2];
 const rows = ref
@@ -38,6 +38,7 @@ for (let i = 0; refs.length && i < 90; i++) {
   if (!Number(busy[0]?.n)) break;
   await new Promise((r) => setTimeout(r, 2000));
 }
+await drainBackground(); // report generation + emails started in this process
 const done = refs.length ? await query<{ order_ref: string; report_status: string; report_error: string | null }>(`SELECT order_ref, report_status, report_error FROM orders WHERE order_ref IN (${refs.map(() => "?").join(",")})`, refs) : [];
 for (const d of done) console.log(`${d.order_ref} · final report status: ${d.report_status}${d.report_error ? ` (${d.report_error})` : ""}`);
 console.log(`✓ checked ${rows.length} order(s)`);
