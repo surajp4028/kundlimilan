@@ -1,0 +1,2 @@
+-- Put future schema changes here as NNN_name.sql (e.g. 002_add_column.sql).
+-- Each file runs once, automatically, on the next deploy.
