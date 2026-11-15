@@ -1,18 +1,19 @@
 import "server-only";
 import crypto from "node:crypto";
 import { exec, query, queryOne, sqlDate, transaction } from "./db";
-import { decrypt, encrypt } from "./crypto";
+import { decrypt, encrypt, signRef } from "./crypto";
 import { ApiError } from "./http";
 import { audit } from "./audit";
 import { getAllSettings, getNumberSetting, getSetting } from "./settings";
-import { getServiceById, buildPdfForm, subjectOf, type OrderInput, type Service } from "./services";
+import { getServiceById, buildPdfForm, palmPhotoKey, subjectOf, type OrderInput, type Service } from "./services";
 import { createOrder as rzpCreateOrder, type RzpPayment } from "./payments/razorpay";
 import { recordAttempt } from "./payments/attempts";
 import { logProvider } from "./payments/log";
 import { autoRefundFailedOrder } from "./payments/refunds";
 import { markCouponUsed, releaseCoupon, reserveCoupon } from "./coupons";
 import { astroPdf, downloadProviderPdf } from "./astro/client";
-import { putObject, userKey } from "./storage";
+import { palmReport, palmScan } from "./astro/palm";
+import { getObject, putObject, userKey } from "./storage";
 import { sendResendEmail } from "./notify";
 import { env } from "./env";
 import { after } from "next/server";
@@ -59,7 +60,8 @@ export type OrderRow = {
   language: string; price_paise: number; discount_paise: number; amount_paise: number; coupon_code: string | null; currency: string;
   status: "pending" | "paid" | "completed" | "failed" | "refunded" | "cancelled"; payment_status: "unpaid" | "paid" | "refunded" | "failed";
   pay_order_id: string | null; pay_payment_id: string | null; pay_method: string | null; paid_at: Date | null;
-  report_status: "not_started" | "generating" | "ready" | "failed"; report_attempts: number; report_error: string | null; report_started_at: Date | null;
+  report_status: "not_started" | "generating" | "waiting" | "ready" | "failed"; report_attempts: number; report_error: string | null; report_started_at: Date | null;
+  report_request_id: string | null;
   completed_at: Date | null; notified_at: Date | null; hold_expires_at: Date | null; created_at: Date; updated_at: Date;
 };
 
@@ -70,6 +72,8 @@ export async function createOrder(p: { user: { id: number; uid: string }; servic
   if (s.status !== "active") throw new ApiError(404, "SERVICE_UNAVAILABLE", "This report is not available right now.");
   if (s.inputKind !== p.input.kind) throw new ApiError(422, "INPUT_KIND", "Please fill in the details this report needs.");
   if (!s.languages.includes(p.language)) throw new ApiError(422, "LANGUAGE", "This language isn't available for this report.");
+  if (p.input.kind === "palm" && !(await getObject(palmPhotoKey(p.user.uid, p.input.photo)).catch(() => null)))
+    throw new ApiError(422, "PALM_PHOTO", "Please upload the photo of your palm again.");
   await expireStaleOrders();
 
   const ref = newOrderRef();
@@ -187,29 +191,37 @@ async function previousPdfUrl(ref: string, endpoint: string): Promise<string | n
   }
 }
 
-export async function generateReport(ref: string, by: string): Promise<{ ok: boolean; error?: string }> {
+/** Palm reports are delivered by webhook; if nothing arrives within this window the order is retried. */
+export const PALM_WAIT_SECONDS = 20 * 60;
+
+/** Marks a generation attempt as failed: schedules a retry, or (final) fails the order and optionally refunds. */
+async function reportFailed(ref: string, attempts: number, error: string, retryable: boolean, by: string) {
+  const max = await getNumberSetting("report_max_attempts", 3);
+  const final = !retryable || attempts >= max;
+  await exec("UPDATE orders SET report_status = 'failed', report_error = ?, status = IF(?, 'failed', status) WHERE order_ref = ?", [error.slice(0, 300), final ? 1 : 0, ref]);
+  await audit({ actorType: "system", action: final ? "report.failed" : "report.retry_scheduled", targetType: "order", targetId: ref, meta: { by, error, attempt: attempts } });
+  if (!final) {
+    clearTimeout(retryTimers.get(ref));
+    retryTimers.set(ref, setTimeout(() => void generateReport(ref, "auto-retry").catch(() => {}), 20_000 * attempts));
+  } else if ((await getSetting("auto_refund_failed")) === "on" && by !== "admin") {
+    await autoRefundFailedOrder(ref, error);
+  }
+  return { ok: false as const, error };
+}
+
+export async function generateReport(ref: string, by: string): Promise<{ ok: boolean; error?: string; waiting?: boolean }> {
   const claim = await exec(
     `UPDATE orders SET report_status = 'generating', report_attempts = report_attempts + 1, report_started_at = UTC_TIMESTAMP(), report_error = NULL
       WHERE order_ref = ? AND payment_status = 'paid' AND status <> 'refunded'
-        AND (report_status IN ('not_started','failed') OR (report_status = 'generating' AND report_started_at < UTC_TIMESTAMP() - INTERVAL ${STALE_GENERATING_SECONDS} SECOND))`,
+        AND (report_status IN ('not_started','failed')
+             OR (report_status = 'generating' AND report_started_at < UTC_TIMESTAMP() - INTERVAL ${STALE_GENERATING_SECONDS} SECOND)
+             OR (report_status = 'waiting' AND report_started_at < UTC_TIMESTAMP() - INTERVAL ${PALM_WAIT_SECONDS} SECOND))`,
     [ref],
   );
   if (claim.affectedRows !== 1) return { ok: false, error: "Report is already being generated or isn't due." };
   const o = (await queryOne<OrderRow>("SELECT * FROM orders WHERE order_ref = ?", [ref]))!;
   const service = await getServiceById(o.service_id);
-  const fail = async (error: string, retryable: boolean) => {
-    const max = await getNumberSetting("report_max_attempts", 3);
-    const final = !retryable || o.report_attempts >= max;
-    await exec("UPDATE orders SET report_status = 'failed', report_error = ?, status = IF(?, 'failed', status) WHERE order_ref = ?", [error.slice(0, 300), final ? 1 : 0, ref]);
-    await audit({ actorType: "system", action: final ? "report.failed" : "report.retry_scheduled", targetType: "order", targetId: ref, meta: { by, error, attempt: o.report_attempts } });
-    if (!final) {
-      clearTimeout(retryTimers.get(ref));
-      retryTimers.set(ref, setTimeout(() => void generateReport(ref, "auto-retry").catch(() => {}), 20_000 * o.report_attempts));
-    } else if ((await getSetting("auto_refund_failed")) === "on" && by !== "admin") {
-      await autoRefundFailedOrder(ref, error);
-    }
-    return { ok: false, error };
-  };
+  const fail = (error: string, retryable: boolean) => reportFailed(ref, o.report_attempts, error, retryable, by);
   if (!service) return fail("Service no longer exists", false);
 
   let input: OrderInput;
@@ -220,16 +232,25 @@ export async function generateReport(ref: string, by: string): Promise<{ ok: boo
   }
 
   const user = await queryOne<{ id: number }>("SELECT id FROM users WHERE uid = ?", [o.user_uid]);
+  if (input.kind === "palm") return generatePalmReport(o, input, user?.id ?? null, fail);
+
   const form = buildPdfForm(service.endpoint, input, o.language, await branding());
   // A previous attempt may have got the PDF from AstrologyAPI and then been cut off (e.g. serverless time limit):
   // reuse that file instead of paying for — and waiting on — a second generation.
   const reused = await previousPdfUrl(ref, service.endpoint);
   const pdf = reused ? ({ ok: true, url: reused } as const) : await astroPdf(service.endpoint, form, { orderRef: ref, userId: user?.id });
   if (!pdf.ok) return fail(pdf.error, pdf.retryable);
+  return deliverPdf(o, pdf.url, by, fail);
+}
 
+/** Downloads the provider PDF → private S3 → reports row → order ready → email. */
+async function deliverPdf(o: OrderRow, url: string, by: string, fail: (e: string, r: boolean) => Promise<{ ok: false; error: string }>) {
+  const ref = o.order_ref;
+  const service = await getServiceById(o.service_id);
+  if (!service) return fail("Service no longer exists", false);
   let bytes: Uint8Array;
   try {
-    bytes = await downloadProviderPdf(pdf.url);
+    bytes = await downloadProviderPdf(url);
   } catch (e) {
     return fail((e as Error).message, true);
   }
@@ -249,6 +270,65 @@ export async function generateReport(ref: string, by: string): Promise<{ ok: boo
   await audit({ actorType: "system", action: "report.ready", targetType: "order", targetId: ref, meta: { by, bytes: bytes.length } });
   await notifyReportReady(ref, bytes).catch((e) => console.error("[email] report-ready failed", (e as Error).message));
   return { ok: true };
+}
+
+/* ------------------------------- Palm reading ------------------------------- */
+
+/** palm_id from an earlier successful scan of this order (saves a second paid scan on retries). */
+async function previousPalmId(ref: string): Promise<string | null> {
+  const rows = await query<{ response_enc: string | null }>(
+    "SELECT response_enc FROM payment_logs WHERE order_ref = ? AND provider = 'astrologyapi' AND action = 'palm.get-palm-id' AND outcome = 'ok' ORDER BY id DESC LIMIT 1",
+    [ref],
+  );
+  if (!rows[0]?.response_enc) return null;
+  try {
+    const id = (JSON.parse(await decrypt(rows[0].response_enc)) as { data?: { palm_id?: string } }).data?.palm_id;
+    return id && /^[A-Za-z0-9-]{8,64}$/.test(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+export function palmWebhookUrl(ref: string) {
+  const base = (process.env.PUBLIC_BASE_URL || env.appUrl).replace(/\/+$/, "");
+  return `${base}/api/palm/webhook?ref=${ref}&sig=${signRef("palm-webhook", ref)}`;
+}
+
+async function generatePalmReport(o: OrderRow, input: Extract<OrderInput, { kind: "palm" }>, userId: number | null, fail: (e: string, r: boolean) => Promise<{ ok: false; error: string }>) {
+  const ref = o.order_ref;
+  const webhookUrl = palmWebhookUrl(ref);
+  if (!webhookUrl.startsWith("https://")) return fail("Palm reports need the site on a public https address (PUBLIC_BASE_URL)", false);
+
+  let palmId = await previousPalmId(ref);
+  if (!palmId) {
+    const photo = await getObject(palmPhotoKey(o.user_uid, input.photo)).catch(() => null);
+    if (!photo) return fail("The palm photo could not be found", false);
+    const [year, month, day] = input.person.date.split("-").map(Number);
+    const scan = await palmScan(
+      { image: photo.body, contentType: photo.contentType, day, month, year, gender: input.person.gender === "female" ? "female" : "male" },
+      { orderRef: ref, userId },
+    );
+    if (!scan.ok) return fail(scan.error, scan.retryable);
+    palmId = scan.value;
+  }
+  const job = await palmReport({ palmId, webhookUrl, name: input.person.name, language: o.language }, { orderRef: ref, userId });
+  if (!job.ok) return fail(job.error, job.retryable);
+  await exec("UPDATE orders SET report_status = 'waiting', report_request_id = ?, report_started_at = UTC_TIMESTAMP() WHERE order_ref = ?", [job.value, ref]);
+  await audit({ actorType: "system", action: "report.requested", targetType: "order", targetId: ref, meta: { provider: "palm", requestId: job.value } });
+  return { ok: true, waiting: true };
+}
+
+/** Webhook from AstrologyAPI: the palm PDF is ready (or failed). Idempotent. */
+export async function completePalmReport(ref: string, p: { requestId: string; status: boolean; pdfUrl: string | null }) {
+  const o = await queryOne<OrderRow>("SELECT * FROM orders WHERE order_ref = ?", [ref]);
+  if (!o || o.report_request_id !== p.requestId) return { ok: false as const, error: "unknown request" };
+  if (o.report_status !== "waiting") return { ok: true as const, ignored: true };
+  // claim the delivery so a duplicate webhook can't run it twice
+  const claim = await exec("UPDATE orders SET report_status = 'generating', report_started_at = UTC_TIMESTAMP() WHERE order_ref = ? AND report_status = 'waiting'", [ref]);
+  if (claim.affectedRows !== 1) return { ok: true as const, ignored: true };
+  const fail = (error: string, retryable: boolean) => reportFailed(ref, o.report_attempts, error, retryable, "palm-webhook");
+  if (!p.status || !p.pdfUrl) return fail("The palm report could not be generated by the provider", true);
+  return deliverPdf(o, p.pdfUrl, "palm-webhook", fail);
 }
 
 /** Emails the customer (with the PDF attached when small enough). Logged in provider logs. */

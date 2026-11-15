@@ -100,4 +100,4 @@ export function fmtBirth(b: Pick<BirthInput, "date" | "time" | "place">) {
   return `${date} · ${t} · ${b.place.name}`;
 }
 
-export const SERVICE_ICONS = ["sparkles", "heart", "sun", "moon", "star", "orbit", "gem", "calendar", "hash", "scroll", "crown", "flame"] as const;
+export const SERVICE_ICONS = ["sparkles", "heart", "sun", "moon", "star", "orbit", "gem", "calendar", "hash", "scroll", "crown", "flame", "hand"] as const;

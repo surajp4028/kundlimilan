@@ -19,7 +19,8 @@ import { logProvider } from "../payments/log";
  * Credentials never leave the server, are never logged, never sent to the browser.
  * ===================================================================== */
 
-const ENDPOINT_RE = /^[a-z_]+(\/[A-Za-z0-9_]+){0,3}$/;
+const ENDPOINT_RE = /^[a-z][a-z0-9_-]*(\/[A-Za-z0-9_-]+){0,3}$/;
+const HOSTS = { json: "", vastu: "https://vision.astrologyapi.com/vastu" } as const;
 
 async function ledger(e: { kind: "json" | "pdf"; endpoint: string; status: number | null; outcome: "ok" | "error" | "cache" | "blocked"; error?: string | null; latency: number; feature?: string; userId?: number | null; orderRef?: string | null }) {
   try {
@@ -44,13 +45,17 @@ export type JsonOpts = {
   lang?: string;
   /** cache lifetime in seconds; 0 = no cache */
   ttl?: number;
+  /** "vastu" → vision.astrologyapi.com/vastu (same token); default json.astrologyapi.com */
+  host?: keyof typeof HOSTS;
 };
 
 /** POST a JSON endpoint (wallet token). Identical requests are served from the encrypted cache. */
 export async function astroJson<T = unknown>(endpoint: string, body: Record<string, unknown>, o: JsonOpts): Promise<T> {
   if (!ENDPOINT_RE.test(endpoint)) throw new Error("bad astro endpoint");
   const lang = o.lang && /^[a-z]{2}$/.test(o.lang) ? o.lang : "hi";
-  const key = sha256(`astro:v1:${endpoint}:${lang}:${JSON.stringify(body)}`);
+  const host = o.host === "vastu" ? "vastu" : "json";
+  const base = host === "vastu" ? HOSTS.vastu : env.astro.jsonBase;
+  const key = sha256(`astro:v1:${host === "json" ? "" : `${host}:`}${endpoint}:${lang}:${JSON.stringify(body)}`);
   const ttl = o.ttl ?? (await getNumberSetting("astro_cache_days", 30)) * 86400;
 
   if (ttl > 0) {
@@ -79,11 +84,11 @@ export async function astroJson<T = unknown>(endpoint: string, body: Record<stri
   const started = Date.now();
   let status: number | null = null;
   try {
-    const res = await fetch(`${env.astro.jsonBase}/${endpoint}`, {
+    const res = await fetch(`${base}/${endpoint}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-astrologyapi-key": env.astro.accessToken, "Accept-Language": lang },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(25_000),
+      signal: AbortSignal.timeout(host === "vastu" ? 90_000 : 25_000),
       cache: "no-store",
     });
     status = res.status;
@@ -159,7 +164,7 @@ function redactForm(form: Record<string, unknown>, endpoint: string) {
 
 const MAX_PDF = 40 * 1024 * 1024;
 
-/** Downloads the provider's PDF (https + amazonaws host only), checks the %PDF signature. */
+/** Downloads the provider's PDF (https + known provider hosts only), checks the %PDF signature. */
 export async function downloadProviderPdf(url: string): Promise<Uint8Array> {
   let u: URL;
   try {
@@ -167,7 +172,8 @@ export async function downloadProviderPdf(url: string): Promise<Uint8Array> {
   } catch {
     throw new Error("Invalid PDF URL from provider");
   }
-  if (u.protocol !== "https:" || !/(^|\.)amazonaws\.com$/i.test(u.hostname) || u.username || u.password) throw new Error("Unexpected PDF host from provider");
+  // AstrologyAPI serves PDFs from S3 (classic reports) or Cloudflare R2 (palm reports)
+  if (u.protocol !== "https:" || !/(^|\.)(amazonaws\.com|r2\.dev|astrologyapi\.com)$/i.test(u.hostname) || u.username || u.password) throw new Error("Unexpected PDF host from provider");
   const res = await fetch(u, { signal: AbortSignal.timeout(90_000), cache: "no-store", redirect: "error" });
   if (!res.ok) throw new Error(`PDF download failed (HTTP ${res.status})`);
   const len = Number(res.headers.get("content-length") || 0);

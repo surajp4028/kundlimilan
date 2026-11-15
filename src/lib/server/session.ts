@@ -10,8 +10,9 @@ import { ADMIN_ONLY, can, isPermission, type AdminIdentity, type Permission } fr
 /* =====================================================================
  * Sessions
  *  - Opaque 256-bit random tokens; DB stores only SHA-256(token).
- *  - Customer:  long-lived (USER_SESSION_DAYS, rolling) → "stay logged in until logout".
- *  - Agent:     browser-session cookie, 30-min idle + 12h absolute timeout.
+ *  - Customer & admin: persistent cookie — stays logged in in that browser (even after it is closed)
+ *    until logout, and expires automatically LOGIN_DAYS (default 30) after the login. Not extended.
+ *  - Admin: optional inactivity logout (ADMIN_IDLE_LOGOUT_MINUTES, 0 = off).
  *  - Cookies:   HttpOnly, SameSite=Lax, Secure + __Host- prefix in production.
  *  - Mobile apps (future) send `Authorization: Bearer <token>` instead of cookies.
  * ===================================================================== */
@@ -38,7 +39,7 @@ async function encClient(info: ClientInfo & { location: string }) {
 export async function createUserSession(userId: number, info: ClientInfo & { location: string }, method: string) {
   const token = randomToken(32);
   const now = new Date();
-  const expires = new Date(now.getTime() + env.userSessionDays * 86400_000);
+  const expires = new Date(now.getTime() + env.loginDays * 86400_000);
   const e = await encClient(info);
   await exec(
     "INSERT INTO user_sessions (user_id, token_hash, ip_enc, ip_bidx, location_enc, user_agent_enc, device_enc, client, login_method, created_at, last_seen_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -64,17 +65,12 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   const row = await queryOne<{ sid: number; stale: number; id: number; uid: string }>(
     `SELECT s.id AS sid, (s.last_seen_at < UTC_TIMESTAMP() - INTERVAL 5 MINUTE) AS stale, u.id, u.uid
        FROM user_sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND u.status = 'active'`,
-    [sha256(token)],
+      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND s.created_at > UTC_TIMESTAMP() - INTERVAL ? DAY AND u.status = 'active'`,
+    [sha256(token), env.loginDays],
   );
   if (!row) return null;
-  if (row.stale) {
-    // rolling expiry: active users stay signed in
-    await exec("UPDATE user_sessions SET last_seen_at = UTC_TIMESTAMP(), expires_at = UTC_TIMESTAMP() + INTERVAL ? DAY WHERE id = ?", [
-      env.userSessionDays,
-      row.sid,
-    ]);
-  }
+  // fixed expiry (login + LOGIN_DAYS) — only record activity
+  if (row.stale) await exec("UPDATE user_sessions SET last_seen_at = UTC_TIMESTAMP() WHERE id = ?", [row.sid]);
   return { id: row.id, uid: row.uid, sessionId: row.sid };
 }
 
@@ -106,14 +102,14 @@ export type SessionAdmin = AdminIdentity & { sessionId: number };
 export async function createAdminSession(adminId: number, info: ClientInfo & { location: string }) {
   const token = randomToken(32);
   const now = new Date();
-  const expires = new Date(now.getTime() + env.adminSessionHours * 3600_000);
+  const expires = new Date(now.getTime() + env.loginDays * 86400_000);
   const e = await encClient(info);
   await exec(
     "INSERT INTO admin_sessions (admin_id, token_hash, ip_enc, ip_bidx, location_enc, user_agent_enc, device_enc, created_at, last_seen_at, expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
     [adminId, sha256(token), e.ip, e.ipBidx, e.location, e.ua, e.device, sqlDate(now), sqlDate(now), sqlDate(expires)],
   );
-  // No `expires` → browser-session cookie (cleared when the browser closes)
-  (await cookies()).set(ADMIN_COOKIE, token, { ...baseCookie, sameSite: "strict" });
+  // persistent: survives closing the browser, expires with the session
+  (await cookies()).set(ADMIN_COOKIE, token, { ...baseCookie, sameSite: "strict", expires });
 }
 
 export async function getSessionAdmin(): Promise<SessionAdmin | null> {
@@ -133,11 +129,11 @@ export async function getSessionAdmin(): Promise<SessionAdmin | null> {
     `SELECT s.id AS sid, TIMESTAMPDIFF(SECOND, s.last_seen_at, UTC_TIMESTAMP()) AS idle,
             a.id, a.name_enc, a.email_enc, a.role, a.permissions, (a.avatar_key_enc IS NOT NULL) AS has_avatar, a.avatar_updated_at
        FROM admin_sessions s JOIN admins a ON a.id = s.admin_id
-      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND a.status = 'active'`,
-    [sha256(token)],
+      WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > UTC_TIMESTAMP() AND s.created_at > UTC_TIMESTAMP() - INTERVAL ? DAY AND a.status = 'active'`,
+    [sha256(token), env.loginDays],
   );
   if (!row) return null;
-  if (row.idle > env.adminIdleMinutes * 60) {
+  if (env.adminIdleMinutes > 0 && row.idle > env.adminIdleMinutes * 60) {
     await exec("UPDATE admin_sessions SET revoked_at = UTC_TIMESTAMP(), revoked_reason = 'idle_timeout' WHERE id = ?", [row.sid]);
     return null;
   }

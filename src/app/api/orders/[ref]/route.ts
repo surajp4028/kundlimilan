@@ -1,6 +1,6 @@
 import { ApiError, ok, route } from "@/lib/server/http";
 import { requireUser } from "@/lib/server/session";
-import { STALE_GENERATING_SECONDS, confirmPayment, background, generateReport, orderForUser, publicOrder } from "@/lib/server/orders";
+import { PALM_WAIT_SECONDS, STALE_GENERATING_SECONDS, confirmPayment, background, generateReport, orderForUser, publicOrder } from "@/lib/server/orders";
 import { fetchOrderPayments } from "@/lib/server/payments/razorpay";
 import { rateLimit } from "@/lib/server/ratelimit";
 
@@ -34,7 +34,9 @@ export const GET = route<Ctx>(async (_req, { params }) => {
   } else if (
     o.payment_status === "paid" &&
     ((o.report_status === "not_started" && age > 30_000) ||
-      (o.report_status === "generating" && o.report_started_at && Date.now() - new Date(o.report_started_at).getTime() > STALE_GENERATING_SECONDS * 1000))
+      (o.report_status === "generating" && o.report_started_at && Date.now() - new Date(o.report_started_at).getTime() > STALE_GENERATING_SECONDS * 1000) ||
+      // palm: the provider's webhook never arrived
+      (o.report_status === "waiting" && o.report_started_at && Date.now() - new Date(o.report_started_at).getTime() > PALM_WAIT_SECONDS * 1000))
   ) {
     const ref = o.order_ref;
     background("report", () => generateReport(ref, "status-poll"));

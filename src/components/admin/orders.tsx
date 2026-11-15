@@ -49,7 +49,7 @@ const STATUS_CHIPS = [
 /** One status for the list: payment → report. */
 export function orderState(o: Pick<Row, "status" | "payment_status" | "report_status">) {
   if (o.status === "refunded" || o.status === "cancelled" || o.status === "pending") return o.status;
-  if (o.payment_status === "paid") return o.report_status === "ready" ? "completed" : o.report_status === "generating" ? "generating" : o.report_status === "failed" ? "failed" : "paid";
+  if (o.payment_status === "paid") return o.report_status === "ready" ? "completed" : o.report_status === "generating" || o.report_status === "waiting" ? "generating" : o.report_status === "failed" ? "failed" : "paid";
   return o.status;
 }
 
@@ -195,7 +195,7 @@ function OrderDrawer({ refId, onClose, onChanged }: { refId: string | null; onCl
   const footer = o && (
     <>
       {admin.can("orders.manage") && o.payment_status === "paid" && o.status !== "refunded" && (
-        <Btn variant="brand" disabled={!!busy || o.report_status === "generating"} onClick={() => setConfirm("regenerate")}>
+        <Btn variant="brand" disabled={!!busy || o.report_status === "generating" || o.report_status === "waiting"} onClick={() => setConfirm("regenerate")}>
           <RotateCcw className={cn("h-4 w-4", busy === "regenerate" && "animate-spin")} /> {o.report_status === "ready" ? "Regenerate" : "Generate report"}
         </Btn>
       )}

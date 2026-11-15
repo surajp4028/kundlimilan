@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 
 type Svc = {
   id: number; slug: string; title: string; titleHi: string | null; tagline: string | null; description: string | null; features: string[];
-  category: string; inputKind: "single" | "couple" | "single_year"; endpoint: string; languages: string[]; pagesHint: string | null;
+  category: string; inputKind: "single" | "couple" | "single_year" | "palm"; endpoint: string; languages: string[]; pagesHint: string | null;
   price: number; mrp: number | null; icon: string; accent: string; status: "active" | "hidden" | "disabled"; featured: boolean; sortOrder: number;
   stats: { orders: number; revenue: number };
 };
@@ -29,12 +29,14 @@ export const ENDPOINTS: { value: string; label: string; kind: Svc["inputKind"] }
   { value: "natal_horoscope_report/tropical", label: "Western natal (tropical)", kind: "single" },
   { value: "life_forecast_report/tropical", label: "Western life forecast", kind: "single" },
   { value: "solar_return_report/tropical", label: "Western solar return", kind: "single_year" },
+  { value: "palm_report", label: "Palm reading (photo, Palmistry API)", kind: "palm" },
+  { value: "star_sign_compatibility_report", label: "Star sign compatibility", kind: "single" },
   { value: "synastry_couple_report/tropical", label: "Western synastry (couple)", kind: "couple" },
 ];
 
-const CATEGORIES = ["kundli", "matching", "yearly", "numerology", "remedies", "western"];
+const CATEGORIES = ["kundli", "matching", "yearly", "numerology", "remedies", "western", "palmistry"];
 const ACCENT_KEYS = ["gold", "rose", "violet", "sky", "emerald", "amber"] as const;
-const INPUT_LABEL = { single: "One person", couple: "Couple (boy + girl)", single_year: "One person + year" };
+const INPUT_LABEL = { single: "One person", couple: "Couple (boy + girl)", single_year: "One person + year", palm: "Palm photo + date of birth" };
 
 type Form = {
   slug: string; title: string; titleHi: string; tagline: string; description: string; features: string[]; category: string; inputKind: Svc["inputKind"];

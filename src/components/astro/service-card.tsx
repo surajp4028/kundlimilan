@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { motion } from "motion/react";
-import { ArrowRight, Calendar, Check, Crown, FileText, Flame, Gem, Hash, Heart, Moon, Orbit, ScrollText, Sparkles, Star, Sun, type LucideIcon } from "lucide-react";
+import { ArrowRight, Calendar, Check, Crown, FileText, Flame, Gem, Hand, Hash, Heart, Moon, Orbit, ScrollText, Sparkles, Star, Sun, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { inr } from "@/lib/astro";
 
@@ -10,7 +10,7 @@ export type ServiceCardData = {
   pagesHint: string | null; price: number; mrp: number | null; icon: string; accent: string; featured: boolean; languages: string[]; description?: string | null;
 };
 
-export const ICONS: Record<string, LucideIcon> = { sparkles: Sparkles, heart: Heart, sun: Sun, moon: Moon, star: Star, orbit: Orbit, gem: Gem, calendar: Calendar, hash: Hash, scroll: ScrollText, crown: Crown, flame: Flame };
+export const ICONS: Record<string, LucideIcon> = { hand: Hand, sparkles: Sparkles, heart: Heart, sun: Sun, moon: Moon, star: Star, orbit: Orbit, gem: Gem, calendar: Calendar, hash: Hash, scroll: ScrollText, crown: Crown, flame: Flame };
 export const ACCENTS: Record<string, string> = {
   gold: "from-gold/30 to-gold-3/5 text-gold",
   rose: "from-rose/30 to-rose/5 text-rose",

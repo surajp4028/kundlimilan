@@ -49,7 +49,7 @@ export function OrderStatus({ initial }: { initial: PublicOrder }) {
             <div className="mx-auto w-48"><ZodiacWheel /></div>
             <p className="eyebrow mt-4">Preparing your report</p>
             <h1 className="display mt-3 text-4xl text-ivory">The stars are being <em className="gold-text gold-shine">aligned</em></h1>
-            <p className="mt-3 text-sm text-mist">Payment received. Your {o.title} is being calculated and typeset — this usually takes under two minutes. You can safely leave this page; we'll email it to you too.</p>
+            <p className="mt-3 text-sm text-mist">Payment received. Your {o.title} is being prepared — this usually takes a few minutes. You can safely leave this page; we'll email it to you too.</p>
             <div className="mx-auto mt-6 h-1.5 max-w-xs overflow-hidden rounded-full bg-ink/10">
               <motion.div className="h-full w-1/3 rounded-full bg-gradient-to-r from-gold via-gold-bright to-gold" animate={{ x: ["-100%", "300%"] }} transition={{ repeat: Infinity, duration: 1.6, ease: "easeInOut" }} />
             </div>

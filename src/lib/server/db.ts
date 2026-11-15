@@ -1,6 +1,7 @@
 import "server-only";
 import mysql, { type Pool, type PoolConnection, type ResultSetHeader, type RowDataPacket } from "mysql2/promise";
 import { env } from "./env";
+import { attachDatabasePool } from "@vercel/functions";
 import { ensureSchema } from "./migrate";
 
 /**
@@ -14,6 +15,13 @@ declare global {
   var __kmPool: Pool | undefined;
 }
 
+const onVercel = !!process.env.VERCEL;
+/**
+ * Server-side idle limit for our sessions. On serverless a frozen instance can't close its sockets,
+ * and the MySQL default (8 h) lets them pile up until "Too many connections" (Aiven free plan ≈ 46).
+ */
+const WAIT_TIMEOUT = Math.max(30, Number(process.env.DB_WAIT_TIMEOUT) || (onVercel ? 120 : 28800));
+
 function createPool(): Pool {
   const p = mysql.createPool({
     host: env.db.host,
@@ -22,7 +30,10 @@ function createPool(): Pool {
     password: env.db.password,
     database: env.db.database,
     ssl: env.db.ssl ? (env.db.sslCa ? { ca: env.db.sslCa } : { rejectUnauthorized: false }) : undefined,
-    connectionLimit: Math.max(1, Number(process.env.DB_POOL) || (process.env.VERCEL ? 3 : 10)),
+    connectionLimit: Math.max(1, Number(process.env.DB_POOL) || (onVercel ? 2 : 10)),
+    // serverless: don't keep idle sockets around — close them after 10 s
+    ...(onVercel ? { maxIdle: 0, idleTimeout: 10_000 } : {}),
+    enableKeepAlive: true,
     connectTimeout: 15_000,
     waitForConnections: true,
     charset: "utf8mb4",
@@ -35,8 +46,10 @@ function createPool(): Pool {
   // The event hands over the core (callback) connection, so this query is fire-and-forget.
   p.on("connection", (conn) => {
     // UTC + one predictable sql_mode everywhere (Aiven defaults to ANSI mode: ANSI_QUOTES, PIPES_AS_CONCAT…)
-    (conn as unknown as { query: (sql: string) => void }).query(`SET time_zone = '+00:00', SESSION sql_mode = '${SQL_MODE}'`);
+    (conn as unknown as { query: (sql: string) => void }).query(`SET time_zone = '+00:00', SESSION sql_mode = '${SQL_MODE}', SESSION wait_timeout = ${WAIT_TIMEOUT}`);
   });
+  // Vercel Fluid compute: release idle pool connections before the instance is suspended
+  if (onVercel) attachDatabasePool(p);
   return p;
 }
 

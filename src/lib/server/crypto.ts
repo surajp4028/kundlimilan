@@ -133,6 +133,11 @@ export function hashOtp(challengeId: string, code: string): string {
   return crypto.createHmac("sha256", env.hmacSecret).update(`otp:${challengeId}:${code}`).digest("hex");
 }
 
+/** Short signature for links we hand to third parties (e.g. provider webhooks). */
+export function signRef(purpose: string, value: string): string {
+  return crypto.createHmac("sha256", env.hmacSecret).update(`sig:${purpose}:${value}`).digest("hex").slice(0, 40);
+}
+
 export function sha256(v: string): string {
   return crypto.createHash("sha256").update(v).digest("hex");
 }

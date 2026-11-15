@@ -3,9 +3,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { useState } from "react";
 import { motion } from "motion/react";
-import { ArrowRight, BadgeCheck, CalendarDays, ChevronDown, Clock, Download, FileLock2, Hash, Heart, Languages, Lock, ShieldCheck, Sparkles, Star, Sun, Wand2 } from "lucide-react";
+import { ArrowRight, BadgeCheck, Camera, CalendarDays, ChevronDown, Clock, Download, FileLock2, Hand, Hash, Heart, ImageIcon, Languages, Lock, ShieldCheck, Sparkles, Star, Sun, Wand2 } from "lucide-react";
 import { useSite } from "@/lib/client/providers";
-import { SIGNS } from "@/lib/astro";
+import { SIGNS, inr } from "@/lib/astro";
 import { ZodiacWheel } from "@/components/astro/zodiac-wheel";
 import { Toran } from "@/components/astro/toran";
 import { ZodiacMedallion } from "@/components/astro/zodiac-art";
@@ -14,12 +14,17 @@ import { Meteors } from "@/components/ui/meteors";
 import { Spotlight } from "@/components/ui/spotlight";
 import { NumberTicker } from "@/components/ui/number-ticker";
 import { ServiceCard, type ServiceCardData } from "@/components/astro/service-card";
+import { PalmArt } from "@/components/astro/palm-art";
+import { ToolCard } from "@/components/astro/tools-hub";
+import { TOOLS, toolsOff } from "@/lib/tools-catalog";
 import { Section, SectionTitle } from "./shell";
 import { cn } from "@/lib/utils";
 
 export function Home({ services }: { services: ServiceCardData[] }) {
   const s = useSite();
-  const tools = [
+  const palm = services.find((x) => x.inputKind === "palm");
+  const tools: { href: string; on: string; icon: typeof Sparkles; t: string; d: string; tone: string; badge?: string }[] = [
+    ...(palm ? [{ href: `/reports/${palm.slug}`, on: "on", icon: Hand, t: "Palm Reading", d: "Click a photo of your palm — get your reading", tone: "from-amber/30", badge: inr(palm.price) }] : []),
     { href: "/kundli", on: s.tool_kundli, icon: Sparkles, t: "Free Kundli", d: "Lagna & Navamsa chart, planets, dasha, Manglik", tone: "from-gold/25" },
     { href: "/matching", on: s.tool_matching, icon: Heart, t: "Kundli Milan", d: "36-guna Ashtakoot score in seconds", tone: "from-rose/25" },
     { href: "/horoscope", on: s.tool_horoscope, icon: Sun, t: "Rashifal", d: "Today, tomorrow & this week", tone: "from-amber/25" },
@@ -115,12 +120,15 @@ export function Home({ services }: { services: ServiceCardData[] }) {
               <h2 className="display mt-2 text-3xl text-ivory sm:text-4xl">Start with your <em className="gold-text not-italic">chart</em></h2>
             </div>
           </div>
-          <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0 lg:grid-cols-5">
+          <div className={cn("no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto overflow-y-hidden overscroll-x-contain px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:px-0", tools.length > 5 ? "lg:grid-cols-6" : "lg:grid-cols-5")}>
             {tools.map((t, i) => (
               <motion.div key={t.href} initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.06 }} className="w-[68%] shrink-0 snap-start min-[480px]:w-[44%] sm:w-auto">
                 <Link href={t.href} className="lux-card group flex h-full flex-col overflow-hidden p-5">
                   <div className={cn("pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-gradient-to-br to-transparent blur-2xl", t.tone)} />
-                  <t.icon className="relative h-7 w-7 text-gold" />
+                  <div className="relative flex items-start justify-between gap-2">
+                    <t.icon className="h-7 w-7 text-gold" />
+                    {t.badge && <span className="rounded-full bg-gradient-to-b from-gold-light to-gold-bright px-2.5 py-0.5 text-xs font-bold text-ongold shadow-gold">{t.badge}</span>}
+                  </div>
                   <div className="relative mt-6 font-display text-2xl text-ivory">{t.t}</div>
                   <p className="relative mt-1 text-[13px] leading-snug text-mist">{t.d}</p>
                   <span className="relative mt-5 inline-flex items-center gap-1 text-xs font-semibold text-gold">
@@ -132,6 +140,12 @@ export function Home({ services }: { services: ServiceCardData[] }) {
           </div>
         </Section>
       )}
+
+      {/* ---------------- MORE TOOLS ---------------- */}
+      <MoreTools />
+
+      {/* ---------------- PALM READING ---------------- */}
+      {palm && <PalmPromo s={palm} />}
 
       {/* ---------------- REPORTS ---------------- */}
       {services.length > 0 && (
@@ -322,5 +336,77 @@ function Faq({ q, a }: { q: string; a: string }) {
         <p className="px-5 pb-5 text-sm leading-relaxed text-mist">{a}</p>
       </motion.div>
     </div>
+  );
+}
+
+/** Palm reading spotlight: price + "click your palm" CTA with an animated palm scan. */
+function PalmPromo({ s }: { s: ServiceCardData }) {
+  const off = s.mrp && s.mrp > s.price ? Math.round(((s.mrp - s.price) / s.mrp) * 100) : 0;
+  return (
+    <Section className="pb-24">
+      <div className="band-maroon relative overflow-hidden rounded-[2rem] border border-[#f7d27a]/30 p-6 shadow-deep sm:p-10">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden"><Meteors number={8} className="meteor-gold" /></div>
+        <div className="relative grid items-center gap-8 lg:grid-cols-[1.15fr_1fr]">
+          <div>
+            <p className="eyebrow !text-[#f7d27a]">New · हस्तरेखा</p>
+            <h2 className="display mt-2 text-4xl text-[#fff4e2] sm:text-5xl">Your palm, <em className="gold-text">read in minutes</em></h2>
+            <p className="mt-3 max-w-lg text-[15px] leading-relaxed text-[#f2d9bd]">
+              Click a photo of your palm with your phone — or pick one from your gallery. Get a detailed palm reading PDF: lines, mounts, personality, career, money, love, marriage & health, in Hindi or English.
+            </p>
+            <ul className="mt-5 grid gap-2 text-sm text-[#fbe7b8] sm:grid-cols-2">
+              {s.features.slice(0, 6).map((f) => (
+                <li key={f} className="flex items-center gap-2"><BadgeCheck className="h-4 w-4 shrink-0 text-[#f7d27a]" /> {f}</li>
+              ))}
+            </ul>
+            <div className="mt-6 flex flex-wrap items-end gap-3">
+              <span className="font-display text-5xl leading-none text-[#ffe9b3]">{inr(s.price)}</span>
+              {s.mrp && s.mrp > s.price && <span className="pb-1 text-lg text-[#e8c9aa] line-through">{inr(s.mrp)}</span>}
+              {off > 0 && <span className="mb-1 rounded-full bg-emerald px-3 py-1 text-xs font-bold text-white">{off}% OFF</span>}
+            </div>
+            <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+              <Link href={`/reports/${s.slug}#order`} className="btn-gold justify-center text-[15px]"><Camera className="h-5 w-5" /> Click your palm photo</Link>
+              <Link href={`/reports/${s.slug}#order`} className="inline-flex items-center justify-center gap-2 rounded-full border border-[#f7d27a]/40 px-6 py-3 text-[15px] font-semibold text-[#fbe7b8] transition hover:bg-white/10"><ImageIcon className="h-5 w-5" /> Upload from gallery</Link>
+            </div>
+          </div>
+          <div className="relative mx-auto w-full max-w-[330px] py-4">
+            <div className="absolute inset-0 animate-glow rounded-full bg-[radial-gradient(circle,rgba(255,200,100,.45),transparent_65%)] blur-xl" />
+            {/* phone-camera look: the palm inside a viewfinder */}
+            <div className="relative mx-auto w-[78%] rounded-[2.2rem] border-[6px] border-[#2b0710] bg-gradient-to-b from-[#fff6e6] to-[#f7dfb5] p-5 shadow-deep">
+              <span className="absolute left-1/2 top-2 h-1.5 w-14 -translate-x-1/2 rounded-full bg-[#2b0710]/70" />
+              <PalmArt className="mx-auto mt-3 w-full" scan frame labels />
+              <div className="mt-4 flex items-center justify-center gap-3">
+                <span className="grid h-11 w-11 place-items-center rounded-full border-4 border-[#6e122a]/25 bg-white shadow"><Camera className="h-5 w-5 text-[#6e122a]" /></span>
+              </div>
+            </div>
+            <span className="absolute -left-1 top-10 rounded-full border border-[#f7d27a]/40 bg-[#5a0f22]/85 px-3 py-1 text-xs text-[#fbe7b8] backdrop-blur">📸 हथेली की फ़ोटो भेजें</span>
+            <span className="absolute -right-1 bottom-16 rounded-full border border-[#f7d27a]/40 bg-[#5a0f22]/85 px-3 py-1 text-xs text-[#fbe7b8] backdrop-blur">✓ PDF in minutes</span>
+          </div>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+/** Popular catalogue tools (dosha, muhurat, dasha, vastu…) with a link to all of them. */
+function MoreTools() {
+  const s = useSite() as unknown as Record<string, string>;
+  const off = toolsOff(s.tools_off);
+  const list = TOOLS.filter((t) => t.popular && !off.has(t.slug)).slice(0, 9);
+  if (!list.length) return null;
+  const total = TOOLS.filter((t) => !off.has(t.slug)).length;
+  return (
+    <Section className="pb-20">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="eyebrow">{total}+ free tools · मुफ़्त टूल</p>
+          <h2 className="display mt-2 text-3xl text-ivory sm:text-4xl">Dosha, muhurat, <em className="gold-text not-italic">remedies</em> & more</h2>
+        </div>
+        <Link href="/tools" className="btn-ghost hidden sm:inline-flex">All tools <ArrowRight className="h-4 w-4" /></Link>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {list.map((t, i) => <ToolCard key={t.slug} t={t} i={i} />)}
+      </div>
+      <div className="mt-6 text-center sm:hidden"><Link href="/tools" className="btn-gold inline-flex">All {total} tools · सभी टूल <ArrowRight className="h-4 w-4" /></Link></div>
+    </Section>
   );
 }

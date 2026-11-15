@@ -68,6 +68,7 @@ export const SETTING_DEFS = {
   astro_api: d("Free tools", "Live AstrologyAPI calls (kill switch)", "on", 3, false, "toggle"),
   astro_daily_cap: d("Free tools", "Max paid JSON calls per day (all users)", "500", 6, false, "number"),
   astro_cache_days: d("Free tools", "Cache identical birth-chart results for (days)", "30", 4, false, "number"),
+  tools_off: d("Free tools", "Tools switched off (slugs, comma-separated — see /tools)", "monthly-horoscope", 2000, true, "textarea", { help: "e.g. kp-astrology, planet-strength · leave empty to show every tool" }),
   default_language: d("Free tools", "Default language (free tools + report form)", "hi", 2, true, "select", { options: ["en", "hi"] }),
 
   // ---------------- Site ----------------

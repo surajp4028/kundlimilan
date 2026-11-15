@@ -12,7 +12,7 @@ import { MARKS, type MarkKind } from "@/lib/brand-marks";
 import { cn } from "@/lib/utils";
 
 type Def = { key: string; label: string; default: string; max: number; public: boolean; group: string; kind?: "text" | "textarea" | "toggle" | "number" | "color" | "select" | "url" | "email"; options?: string[]; help?: string };
-type System = { encryption: string; storage: string; payments: string; astroJson: string; astroPdf: string; email: string; sms: string; otpDryRun: boolean; otpTtl: number; userSessionDays: number; adminIdleMinutes: number };
+type System = { encryption: string; storage: string; payments: string; astroJson: string; astroPdf: string; email: string; sms: string; otpDryRun: boolean; otpTtl: number; loginDays: number; adminIdleMinutes: number };
 type Res = { settings: Record<string, string>; schema: Def[]; system: System; hasLogo: boolean; hasHero?: boolean };
 
 const GROUP_ICON: Record<string, typeof Settings> = { Branding: Palette, "PDF reports": FileText, Orders: ShoppingBag, "Free tools": Sparkles, Site: Globe, System: Server };
@@ -303,8 +303,8 @@ function SystemCard({ s }: { s: System }) {
     ["OTP email", s.email, !/not configured/i.test(s.email)],
     ["OTP SMS", s.sms, !/not configured/i.test(s.sms)],
     ["OTP delivery", s.otpDryRun ? "Dry run — codes are printed in the server console (dev only)" : `Live · codes valid ${Math.round(s.otpTtl / 60)} min`, !s.otpDryRun],
-    ["Customer sessions", `${s.userSessionDays} days, rolling`, true],
-    ["Admin idle timeout", `${s.adminIdleMinutes} minutes`, true],
+    ["Login lasts", `${s.loginDays} days per browser (customers & admins)`, true],
+    ["Admin idle logout", s.adminIdleMinutes ? `${s.adminIdleMinutes} minutes` : "Off", true],
   ];
   return (
     <Card>

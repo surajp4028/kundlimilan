@@ -26,9 +26,12 @@ function migrationFiles() {
   return fs.readdirSync(dir).filter((f) => /^\d+[\w-]*\.sql$/.test(f)).sort();
 }
 
-function fingerprint() {
+async function fingerprint() {
   const h = crypto.createHash("sha256").update(readSql("database/schema.sql"));
   for (const f of migrationFiles()) h.update(f).update(readSql(`database/migrations/${f}`));
+  // new default reports must reach existing databases too (they're INSERT IGNORE'd by slug)
+  const { DEFAULT_SERVICES } = await import("./services");
+  h.update(DEFAULT_SERVICES.map((x) => x.slug).join(","));
   return h.digest("hex").slice(0, 16);
 }
 
@@ -44,7 +47,7 @@ async function connect() {
     timezone: "Z",
     connectTimeout: 15_000,
   });
-  await conn.query("SET time_zone = '+00:00', SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION'");
+  await conn.query("SET time_zone = '+00:00', SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION', SESSION wait_timeout = 120");
   return conn;
 }
 
@@ -52,7 +55,7 @@ export type MigrateResult = { ran: boolean; version: string; steps: string[] };
 
 export async function migrate(opts: { force?: boolean; log?: (m: string) => void } = {}): Promise<MigrateResult> {
   const log = opts.log ?? (() => {});
-  const version = fingerprint();
+  const version = await fingerprint();
   const conn = await connect();
   const steps: string[] = [];
   try {

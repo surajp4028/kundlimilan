@@ -28,7 +28,7 @@ export const GET = route(async () => {
       sms: env.sms.apiKey ? "Fast2SMS configured" : "Not configured",
       otpDryRun: env.otpDryRun,
       otpTtl: env.otpTtlSeconds,
-      userSessionDays: env.userSessionDays,
+      loginDays: env.loginDays,
       adminIdleMinutes: env.adminIdleMinutes,
     },
   });

@@ -3,23 +3,29 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useMotionValue, useMotionValueEvent, useScroll, useSpring, useTransform, type MotionValue } from "motion/react";
-import { BookOpenText, CalendarDays, ChevronRight, Hash, Heart, Home, LogOut, Menu, ScrollText, Sparkles, Sun, User2, X } from "lucide-react";
+import { BookOpenText, CalendarDays, ChevronRight, Hand, Hash, Heart, LayoutGrid, Home, LogOut, Menu, ScrollText, Sparkles, Sun, User2, X } from "lucide-react";
 import { useAuth, useSite } from "@/lib/client/providers";
 import { Logo } from "./logo";
 import { cn } from "@/lib/utils";
 
 export const NAV = [
   { href: "/reports", label: "Reports", icon: ScrollText, tool: null },
+  { href: "/reports/palm-reading", label: "Palm Reading", icon: Hand, tool: null },
   { href: "/kundli", label: "Free Kundli", icon: Sparkles, tool: "tool_kundli" },
   { href: "/matching", label: "Kundli Milan", icon: Heart, tool: "tool_matching" },
   { href: "/horoscope", label: "Horoscope", icon: Sun, tool: "tool_horoscope" },
   { href: "/panchang", label: "Panchang", icon: CalendarDays, tool: "tool_panchang" },
-  { href: "/numerology", label: "Numerology", icon: Hash, tool: "tool_numerology" },
+  { href: "/tools", label: "All Tools", icon: LayoutGrid, tool: null },
 ] as const;
 
 export function useNav() {
   const s = useSite() as unknown as Record<string, string>;
   return NAV.filter((n) => !n.tool || s[n.tool] === "on");
+}
+
+/** The nav link for the current page — the longest matching href wins (/reports/palm-reading over /reports). */
+export function activeHref(path: string, hrefs: readonly string[]) {
+  return hrefs.filter((h) => path === h || path.startsWith(`${h}/`)).sort((a, b) => b.length - a.length)[0] ?? null;
 }
 
 export function Navbar() {
@@ -30,6 +36,7 @@ export function Navbar() {
   const site = useSite();
   const path = usePathname();
   const links = useNav();
+  const current = activeHref(path, links.map((l) => l.href));
   useMotionValueEvent(scrollY, "change", (v) => setScrolled((s) => (s ? v > 8 : v > 32)));
   useEffect(() => setOpen(false), [path]);
   useEffect(() => {
@@ -52,14 +59,14 @@ export function Navbar() {
           <Link href="/" aria-label={`${site.site_name} home`} className="shrink-0">
             <Logo size={scrolled ? "sm" : "md"} />
           </Link>
-          <div className="hidden items-center gap-1 lg:flex">
+          <div className="hidden items-center gap-0.5 lg:flex">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
-                className={cn("relative rounded-full px-3.5 py-2 text-sm transition", path.startsWith(l.href) ? "font-semibold text-ongold" : "text-ivory/80 hover:text-ivory")}
+                className={cn("relative whitespace-nowrap rounded-full px-3 py-2 text-sm transition xl:px-3.5", current === l.href ? "font-semibold text-ongold" : "text-ivory/80 hover:text-ivory")}
               >
-                {path.startsWith(l.href) && <motion.span layoutId="nav-pill" transition={{ type: "spring", stiffness: 380, damping: 32 }} className="absolute inset-0 -z-10 rounded-full border border-[#c58b1d] bg-gradient-to-b from-gold-light to-gold-bright shadow-gold" />}
+                {current === l.href && <motion.span layoutId="nav-pill" transition={{ type: "spring", stiffness: 380, damping: 32 }} className="absolute inset-0 -z-10 rounded-full border border-[#c58b1d] bg-gradient-to-b from-gold-light to-gold-bright shadow-gold" />}
                 {l.label}
               </Link>
             ))}
@@ -186,7 +193,8 @@ export function MobileDock() {
     ...links.map((l) => ({ href: l.href, label: l.label, icon: l.icon })),
     { href: user ? "/account" : "/login", label: user ? "My account" : "Sign in", icon: User2 },
   ];
-  const active = (href: string) => (href === "/" ? path === "/" : path.startsWith(href));
+  const cur = activeHref(path, items.map((i) => i.href).filter((h) => h !== "/"));
+  const active = (href: string) => (href === "/" ? path === "/" : href === cur);
   // phones: only the 5 most-used destinations (the rest live in the ☰ menu)
   const phoneItems = [
     { href: "/kundli", short: "Kundli", label: "Free Kundli", icon: Sparkles },

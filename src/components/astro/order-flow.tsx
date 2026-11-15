@@ -5,7 +5,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { ArrowRight, BadgePercent, Check, ChevronLeft, Loader2, Lock, ShieldCheck, Tag, X } from "lucide-react";
 import { toast } from "sonner";
 import { BirthFields, emptyBirth, validateBirth, type BirthDraft } from "./birth-form";
-import { Segmented } from "./pickers";
+import { Segmented, fmtDate } from "./pickers";
+import { PalmFields, emptyPalm, uploadPalmPhoto, validatePalm, type PalmDraft } from "./palm-input";
 import { useAuth, useSite } from "@/lib/client/providers";
 import { api, errMsg } from "@/lib/client/api";
 import { openCheckout } from "@/lib/client/razorpay";
@@ -13,7 +14,7 @@ import { fmtBirth, inr, LANGUAGES } from "@/lib/astro";
 import { cn } from "@/lib/utils";
 import type { ServiceCardData } from "./service-card";
 
-type Draft = { boy: BirthDraft; girl: BirthDraft; person: BirthDraft; year: number; lang: string };
+type Draft = { boy: BirthDraft; girl: BirthDraft; person: BirthDraft; year: number; lang: string; palm: PalmDraft };
 export const DRAFT_KEY = (slug: string) => `astro.draft.${slug}`;
 
 /** Carry birth details from a free tool straight into the paid report's review step. */
@@ -29,9 +30,10 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
   const site = useSite();
   const router = useRouter();
   const thisYear = new Date().getFullYear();
-  const [d, setD] = useState<Draft>(() => ({ boy: emptyBirth("male"), girl: emptyBirth("female"), person: emptyBirth("male"), year: thisYear, lang: s.languages.includes(site.default_language) ? site.default_language : s.languages[0] }));
+  const [d, setD] = useState<Draft>(() => ({ boy: emptyBirth("male"), girl: emptyBirth("female"), person: emptyBirth("male"), palm: emptyPalm(), year: thisYear, lang: s.languages.includes(site.default_language) ? site.default_language : s.languages[0] }));
   const [step, setStep] = useState<"details" | "review">("details");
-  const [errs, setErrs] = useState<Record<string, Partial<Record<keyof BirthDraft, string>>>>({});
+  const [errs, setErrs] = useState<Record<string, Partial<Record<string, string>>>>({});
+  const isPalm = s.inputKind === "palm";
   const [coupon, setCoupon] = useState("");
   const [applied, setApplied] = useState<{ code: string; discountPaise: number; title: string | null } | null>(null);
   const [checking, setChecking] = useState(false);
@@ -49,7 +51,7 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
     if (window.location.hash === "#order") setTimeout(() => document.getElementById("order")?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
   }, [s.slug]);
 
-  const parts = s.inputKind === "couple" ? (["boy", "girl"] as const) : (["person"] as const);
+  const parts = isPalm ? ([] as const) : s.inputKind === "couple" ? (["boy", "girl"] as const) : (["person"] as const);
   const validated = useMemo(() => {
     const out: Record<string, ReturnType<typeof validateBirth>> = {};
     for (const p of parts) out[p] = validateBirth(d[p]);
@@ -58,6 +60,10 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
 
   function next() {
     const e: typeof errs = {};
+    if (isPalm) {
+      const v = validatePalm(d.palm);
+      if (!v.ok) e.palm = { [v.field]: v.message };
+    }
     for (const p of parts) {
       const v = validated[p];
       if (!v.ok) e[p] = { [v.field]: v.message };
@@ -72,7 +78,8 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function input() {
+  function input(palmPhoto?: string) {
+    if (isPalm) return { kind: "palm" as const, person: { name: d.palm.name.trim(), gender: d.palm.gender, date: d.palm.date }, photo: palmPhoto || d.palm.photo || "" };
     const val = (p: "boy" | "girl" | "person") => (validated[p] as { ok: true; value: import("@/lib/astro").BirthInput }).value;
     if (s.inputKind === "couple") return { kind: "couple" as const, boy: val("boy"), girl: val("girl") };
     if (s.inputKind === "single_year") return { kind: "single_year" as const, person: val("person"), year: d.year };
@@ -106,7 +113,21 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
     if (!user) return goLogin();
     setPaying(true);
     try {
-      const r = await api<{ orderRef: string; checkout: Record<string, unknown> }>("/api/orders", { body: { service: s.slug, input: input(), language: d.lang, coupon: applied?.code || null } });
+      let palmPhoto = d.palm.photo || undefined;
+      if (isPalm && !palmPhoto) {
+        const t = toast.loading("Uploading your palm photo…");
+        try {
+          const photo = await uploadPalmPhoto(d.palm.preview!);
+          palmPhoto = photo;
+          setD((x) => ({ ...x, palm: { ...x.palm, photo } }));
+          toast.dismiss(t);
+        } catch (e) {
+          toast.error((e as Error).message, { id: t });
+          setPaying(false);
+          return;
+        }
+      }
+      const r = await api<{ orderRef: string; checkout: Record<string, unknown> }>("/api/orders", { body: { service: s.slug, input: input(palmPhoto), language: d.lang, coupon: applied?.code || null } });
       try {
         sessionStorage.removeItem(DRAFT_KEY(s.slug));
       } catch {}
@@ -141,7 +162,9 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
       <AnimatePresence mode="wait">
         {step === "details" ? (
           <motion.div key="details" initial={{ opacity: 0, x: -16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -16 }} className="mt-6 space-y-8">
-            {s.inputKind === "couple" ? (
+            {isPalm ? (
+              <PalmFields value={d.palm} onChange={(v) => setD({ ...d, palm: v })} errors={errs.palm} />
+            ) : s.inputKind === "couple" ? (
               <>
                 <BirthFields idPrefix="boy" title="Boy's details" accent="sky" lockGender value={d.boy} onChange={(v) => setD({ ...d, boy: v })} errors={errs.boy} />
                 <div className="divider-orn text-xs">✦</div>
@@ -172,6 +195,17 @@ export function OrderFlow({ s }: { s: ServiceCardData }) {
               <ChevronLeft className="h-4 w-4" /> Edit details
             </button>
             <div className="space-y-3">
+              {isPalm && d.palm.preview && (
+                <div className="flex items-center gap-4 rounded-2xl border border-ink/[.08] bg-ink/[.03] p-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={d.palm.preview} alt="Your palm" className="h-24 w-20 shrink-0 rounded-xl object-cover" />
+                  <div className="min-w-0">
+                    <div className="text-[11px] uppercase tracking-[.18em] text-mist">Palm reading for</div>
+                    <div className="truncate font-display text-2xl text-ivory">{d.palm.name}</div>
+                    <div className="text-sm text-mist">{d.palm.gender === "female" ? "Female" : "Male"} · Born {fmtDate(d.palm.date)}</div>
+                  </div>
+                </div>
+              )}
               {parts.map((p) => {
                 const v = validated[p];
                 if (!v.ok) return null;

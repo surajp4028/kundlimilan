@@ -67,9 +67,10 @@ export const env = {
   otpDevEcho: !isProd && str("OTP_DEV_ECHO") === "true",
   /** Dev only: skip SMS/email providers entirely (codes printed to console). */
   otpDryRun: !isProd && str("OTP_DRY_RUN") === "true",
-  userSessionDays: int("USER_SESSION_DAYS", 180),
-  adminSessionHours: int("ADMIN_SESSION_HOURS", 12),
-  adminIdleMinutes: int("ADMIN_IDLE_MINUTES", 30),
+  /** One login lasts this many days in that browser (customers and admins), unless they log out. */
+  loginDays: Math.max(1, int("LOGIN_DAYS", 30)),
+  /** Optional admin auto-logout after inactivity; 0 = off. */
+  adminIdleMinutes: Math.max(0, int("ADMIN_IDLE_LOGOUT_MINUTES", 0)),
 };
 
 if (!env.hmacSecret || env.hmacSecret.length < 32) {
