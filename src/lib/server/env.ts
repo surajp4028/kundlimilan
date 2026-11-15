@@ -17,16 +17,20 @@ const cleanOrigin = (v: string) => v.trim().replace(/^["']|["']$/g, "").replace(
 
 /**
  * The site's public address — no env var needed:
- *   1. SITE_URL / PUBLIC_BASE_URL / APP_URL if you set one (optional override)
+ *   1. SITE_URL if you set one (optional override)
  *   2. on Vercel: the production domain (your custom domain once connected, else *.vercel.app) —
  *      Vercel fills VERCEL_PROJECT_PRODUCTION_URL automatically; previews use VERCEL_URL
  *   3. http://localhost:3000 for local development
  */
 export function siteUrl(): string {
-  const set = str("SITE_URL") || str("PUBLIC_BASE_URL") || str("APP_URL");
-  if (set) return cleanOrigin(set);
+  const usable = (v: string) => v && !/your-domain|example\.com/i.test(v);
+  const forced = str("SITE_URL");
+  if (usable(forced)) return cleanOrigin(forced);
+  // on Vercel, trust only Vercel's own domain variables — old APP_URL / PUBLIC_BASE_URL values are ignored there
   const host = process.env.VERCEL_ENV === "production" ? str("VERCEL_PROJECT_PRODUCTION_URL") || str("VERCEL_URL") : str("VERCEL_URL");
   if (host) return `https://${cleanOrigin(host).replace(/^https?:\/\//, "")}`;
+  const legacy = str("PUBLIC_BASE_URL") || str("APP_URL");
+  if (usable(legacy)) return cleanOrigin(legacy);
   return "http://localhost:3000";
 }
 
