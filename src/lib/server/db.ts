@@ -49,7 +49,14 @@ function createPool(): Pool {
     (conn as unknown as { query: (sql: string) => void }).query(`SET time_zone = '+00:00', SESSION sql_mode = '${SQL_MODE}', SESSION wait_timeout = ${WAIT_TIMEOUT}`);
   });
   // Vercel Fluid compute: release idle pool connections before the instance is suspended
-  if (onVercel) attachDatabasePool(p);
+  // (it needs mysql2's core pool — the promise wrapper isn't recognised — and must never break startup/build)
+  if (onVercel) {
+    try {
+      attachDatabasePool((p as unknown as { pool: Parameters<typeof attachDatabasePool>[0] }).pool);
+    } catch (e) {
+      console.warn("[db] attachDatabasePool skipped:", (e as Error).message);
+    }
+  }
   return p;
 }
 
