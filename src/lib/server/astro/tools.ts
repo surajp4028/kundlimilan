@@ -201,13 +201,16 @@ export async function dailyHoroscope(sign: SignKey, lang: string, period: HoroPe
 
 /* ------------------------------- Panchang ------------------------------- */
 
-export async function panchang(place: { name: string; lat: number; lon: number; tzId?: string | null }, lang: string, userId: number | null) {
+export async function panchang(place: { name: string; lat: number; lon: number; tzId?: string | null }, lang: string, userId: number | null, date?: string) {
   const today = istDate();
-  const [y, m, d] = today.split("-").map(Number);
+  const day = date || today;
+  const [y, m, d] = day.split("-").map(Number);
   const tz = (place.tzId && tzOffsetHours(place.tzId, y, m, d, 6, 0)) ?? 5.5;
   const body = { day: d, month: m, year: y, hour: 6, min: 0, lat: Math.round(place.lat * 100) / 100, lon: Math.round(place.lon * 100) / 100, tzone: tz };
-  const r = await astroJson<Record<string, unknown>>("advanced_panchang", body, { feature: "panchang", userId, lang, ttl: secondsToIstMidnight() });
-  return { date: today, place: place.name, data: r };
+  // a given date's Panchang never changes — cache other days for 30 days, today until midnight
+  const ttl = day === today ? secondsToIstMidnight() : 30 * 86400;
+  const r = await astroJson<Record<string, unknown>>("advanced_panchang", body, { feature: "panchang", userId, lang, ttl });
+  return { date: day, today, place: place.name, data: r };
 }
 
 /* ------------------------------- Numerology ------------------------------- */

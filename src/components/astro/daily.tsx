@@ -2,11 +2,11 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "motion/react";
-import { Briefcase, Clock, Compass, HeartPulse, Loader2, MapPin, Moon, Plane, Smile, Sparkles, Sun, Sunrise, Sunset, Clover, Heart, AlertTriangle } from "lucide-react";
+import { Briefcase, CheckCircle2, ChevronLeft, ChevronRight, Clock, Compass, HeartPulse, Info, Loader2, MapPin, Moon, Plane, Smile, Sparkles, Sun, Sunrise, Sunset, Clover, Heart, AlertTriangle, XCircle } from "lucide-react";
 import { api, errMsg } from "@/lib/client/api";
 import { useSite } from "@/lib/client/providers";
 import { SIGNS, isSign, type SignKey } from "@/lib/astro";
-import { PlaceSearch, Segmented, type PlaceValue } from "./pickers";
+import { DateWheel, PlaceSearch, Segmented, type PlaceValue } from "./pickers";
 import { cn } from "@/lib/utils";
 import { ZodiacMedallion } from "./zodiac-art";
 
@@ -127,7 +127,7 @@ export function HoroscopeTool() {
 
 type T = { hour: number; minute: number; second?: number };
 type Detail = { details?: Record<string, string | number | boolean>; end_time?: T };
-type Panch = { date: string; place: string; data: Record<string, unknown> };
+type Panch = { date: string; today?: string; place: string; data: Record<string, unknown> };
 
 const hm = (t?: T) => (t ? `${((t.hour % 24) + 11) % 12 + 1}:${String(t.minute).padStart(2, "0")} ${t.hour % 24 < 12 ? "AM" : "PM"}${t.hour >= 24 ? " (+1)" : ""}` : "");
 const clock = (s?: unknown) => {
@@ -136,38 +136,91 @@ const clock = (s?: unknown) => {
   return `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 };
 
+/* Plain-language meaning of every Panchang term (shown under each item). */
+const EXPLAIN: Record<string, { hi: string; en: string }> = {
+  tithi: { hi: "चंद्रमा के हिसाब से इस दिन की तारीख़। व्रत, त्योहार और शुभ काम इसी से तय होते हैं।", en: "The lunar date. Fasts, festivals and good-work days are set by it." },
+  nakshatra: { hi: "इस दिन चंद्रमा किस तारा-समूह में है। किसी काम की शुरुआत के लिए दिन अच्छा है या नहीं, यह इससे देखा जाता है।", en: "The star group the Moon is in on this day — used to judge if the day suits a new start." },
+  yog: { hi: "सूर्य और चंद्रमा की स्थिति से बना दिन का स्वभाव — शुभ या अशुभ।", en: "The day's overall nature from the Sun–Moon positions — good or not so good." },
+  karan: { hi: "आधी तिथि। काम शुरू करने का ठीक समय चुनने में काम आता है।", en: "Half of a tithi — used to fine-tune when to begin something." },
+  abhijit_muhurta: { hi: "दिन का सबसे शुभ समय (दोपहर के आसपास)। नया काम, यात्रा या ख़रीदारी शुरू करने के लिए सबसे अच्छा।", en: "The most auspicious window of the day (around noon). Best for starting new work, a journey or a purchase." },
+  rahukaal: { hi: "रोज़ लगभग डेढ़ घंटे का अशुभ समय। इसमें नया काम, यात्रा या ख़रीदारी शुरू न करें — पहले से चल रहा काम कर सकते हैं।", en: "About 1½ hours of inauspicious time every day. Don't start new work, a journey or a purchase — ongoing work is fine." },
+  guliKaal: { hi: "गुलिक काल — इसमें शुरू किया काम दोहराया जाता है। इसलिए उधार देना या ऐसा कोई काम जो दोबारा न हो, तो इसमें न करें।", en: "Gulika — whatever starts now tends to repeat. Avoid lending money or anything you wouldn't want repeated." },
+  yamghant_kaal: { hi: "यमगण्ड — अशुभ समय। इसमें यात्रा पर निकलना और नया काम शुरू करना टालें।", en: "Yamaganda — inauspicious. Avoid setting out on a journey or starting new work." },
+  disha_shool: { hi: "इस दिन इस दिशा में यात्रा शुरू करना अशुभ माना जाता है।", en: "Starting a journey in this direction is considered unlucky on this day." },
+  moon_nivas: { hi: "इस दिन चंद्रमा इस दिशा में है। यात्रा में चंद्रमा सामने या दाईं ओर हो तो शुभ माना जाता है।", en: "The Moon is in this direction on this day. Travelling with the Moon in front or on your right is considered lucky." },
+};
+/** "HH:MM[:SS]" → minutes after midnight */
+const mins = (s?: string) => {
+  const m = /^(\d{1,2}):(\d{1,2})/.exec(s || "");
+  return m ? Number(m[1]) * 60 + Number(m[2]) : NaN;
+};
+const hhmm = (n: number) => `${String(Math.floor(n / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}`;
+/** Parts of the good window [a,b] that don't touch any bad window; keeps pieces of 10+ minutes. */
+function cleanWindows(good: { start?: string; end?: string } | undefined, bad: { start?: string; end?: string }[]) {
+  let parts: [number, number][] = [[mins(good?.start), mins(good?.end)]];
+  if (!parts.every(([a, b]) => b > a)) return [];
+  for (const w of bad) {
+    const [x, y] = [mins(w.start), mins(w.end)];
+    if (!(y > x)) continue;
+    parts = parts.flatMap(([a, b]) => (y <= a || x >= b ? [[a, b]] : ([[a, Math.min(b, x)], [Math.max(a, y), b]] as [number, number][]).filter(([p, q]) => q - p > 0)));
+  }
+  return parts.filter(([a, b]) => b - a >= 10).map(([a, b]) => ({ start: hhmm(a), end: hhmm(b) }));
+}
+const istToday = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+const shiftDay = (iso: string, n: number) => {
+  const t = new Date(`${iso}T00:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + n);
+  return t.toISOString().slice(0, 10);
+};
+
 export function PanchangTool() {
   const site = useSite();
   const [place, setPlace] = useState<PlaceValue | null>({ name: "New Delhi, Delhi, India", lat: 28.6139, lon: 77.209, tzId: "Asia/Kolkata" });
   const [lang, setLang] = useState<"en" | "hi">(site.default_language === "hi" ? "hi" : "en");
+  const [date, setDate] = useState(istToday);
   const [p, setP] = useState<Panch | null>(null);
   const [busy, setBusy] = useState(true);
   const [err, setErr] = useState("");
+  const hi = lang === "hi";
+  const ex = (k: string) => (EXPLAIN[k] ? EXPLAIN[k][lang] : "");
+  const today = istToday();
+  const thisYear = new Date().getFullYear();
 
   useEffect(() => {
     if (!place) return;
     let alive = true;
     setBusy(true);
     setErr("");
-    api<{ panchang: Panch }>("/api/tools/panchang", { body: { place, lang } })
+    api<{ panchang: Panch }>("/api/tools/panchang", { body: { place, lang, date } })
       .then((r) => alive && setP(r.panchang))
       .catch((e) => alive && setErr(errMsg(e)))
       .finally(() => alive && setBusy(false));
     return () => {
       alive = false;
     };
-  }, [place, lang]);
+  }, [place, lang, date]);
 
   const d = (p?.data || {}) as Record<string, unknown>;
   const pick = (k: string) => d[k] as Detail | undefined;
   const five = [
-    { k: "tithi", label: "Tithi", name: (x: Detail) => x.details?.tithi_name, more: (x: Detail) => x.details?.special || x.details?.summary },
-    { k: "nakshatra", label: "Nakshatra", name: (x: Detail) => x.details?.nak_name, more: (x: Detail) => `Ruler ${x.details?.ruler ?? ""} · Deity ${x.details?.deity ?? ""}` },
-    { k: "yog", label: "Yoga", name: (x: Detail) => x.details?.yog_name, more: (x: Detail) => x.details?.special || x.details?.meaning },
-    { k: "karan", label: "Karana", name: (x: Detail) => x.details?.karan_name, more: (x: Detail) => x.details?.special },
+    { k: "tithi", label: hi ? "तिथि" : "Tithi", name: (x: Detail) => x.details?.tithi_name, more: (x: Detail) => x.details?.special || x.details?.summary },
+    { k: "nakshatra", label: hi ? "नक्षत्र" : "Nakshatra", name: (x: Detail) => x.details?.nak_name, more: (x: Detail) => `${hi ? "स्वामी" : "Ruler"} ${x.details?.ruler ?? ""} · ${hi ? "देवता" : "Deity"} ${x.details?.deity ?? ""}` },
+    { k: "yog", label: hi ? "योग" : "Yoga", name: (x: Detail) => x.details?.yog_name, more: (x: Detail) => x.details?.special || x.details?.meaning },
+    { k: "karan", label: hi ? "करण" : "Karana", name: (x: Detail) => x.details?.karan_name, more: (x: Detail) => x.details?.special },
   ];
   const timed = (k: string) => d[k] as { start?: string; end?: string } | undefined;
   const maah = d.hindu_maah as Record<string, string | boolean> | undefined;
+  const txt = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const shool = txt(d.disha_shool);
+  const remedy = txt(d.disha_shool_remedies);
+  const nivas = txt(d.moon_nivas);
+  const abhijit = timed("abhijit_muhurta");
+  const avoid = (["rahukaal", "yamghant_kaal", "guliKaal"] as const).map((k) => ({ k, t: timed(k) })).filter((x) => x.t?.start);
+  const KAAL_LABEL: Record<string, string> = hi
+    ? { abhijit_muhurta: "अभिजीत मुहूर्त", rahukaal: "राहु काल", guliKaal: "गुलिक काल", yamghant_kaal: "यमगण्ड" }
+    : { abhijit_muhurta: "Abhijit muhurat", rahukaal: "Rahu kaal", guliKaal: "Gulika kaal", yamghant_kaal: "Yamaganda" };
+  const isToday = date === today;
+  const bestToLeave = cleanWindows(abhijit, avoid.map((x) => x.t!));
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-8">
@@ -175,21 +228,46 @@ export function PanchangTool() {
         <div className="flex-1"><PlaceSearch value={place} onChange={(v) => v && setPlace(v)} placeholder="Choose your city" /></div>
         <Segmented className="w-full sm:w-44" value={lang} onChange={setLang} options={[{ value: "en", label: "English" }, { value: "hi", label: "हिन्दी" }]} />
       </div>
+
+      {/* date bar */}
+      <div className="mx-auto mt-3 flex max-w-xl items-center gap-2">
+        <button type="button" aria-label={hi ? "पिछला दिन" : "Previous day"} onClick={() => setDate((v) => shiftDay(v, -1))} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-gold/25 bg-white/80 text-gold transition hover:border-gold/60">
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <DateWheel value={date} onChange={setDate} label={hi ? "पंचांग की तारीख़ चुनें" : "Choose a date"} minYear={thisYear - 1} maxYear={thisYear + 1} />
+        </div>
+        <button type="button" aria-label={hi ? "अगला दिन" : "Next day"} onClick={() => setDate((v) => shiftDay(v, 1))} className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-gold/25 bg-white/80 text-gold transition hover:border-gold/60">
+          <ChevronRight className="h-5 w-5" />
+        </button>
+      </div>
+      <div className="mt-2 flex justify-center gap-2 text-xs">
+        {[
+          { l: hi ? "आज" : "Today", v: today },
+          { l: hi ? "कल" : "Tomorrow", v: shiftDay(today, 1) },
+          { l: hi ? "परसों" : "Day after", v: shiftDay(today, 2) },
+        ].map((c) => (
+          <button key={c.v} type="button" onClick={() => setDate(c.v)} className={cn("rounded-full border px-3 py-1 font-semibold transition", date === c.v ? "border-[#c58b1d] bg-gradient-to-b from-gold-light to-gold-bright text-ongold" : "border-gold/25 bg-white/70 text-ivory-2 hover:border-gold/60")}>
+            {c.l}
+          </button>
+        ))}
+      </div>
+
       {err && <p className="mt-6 text-center text-sm text-amber"><AlertTriangle className="mr-1 inline h-4 w-4" />{err}</p>}
       {busy && !p && <div className="mt-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-gold" /></div>}
       {p && (
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} className={cn("mt-8 space-y-4 transition", busy && "opacity-50")}>
           <div className="lux-card overflow-hidden p-6 text-center sm:p-8">
-            <p className="eyebrow">{String(d.day || "")}</p>
-            <h2 className="display mt-2 text-4xl text-ivory sm:text-5xl">{new Date(p.date + "T00:00:00").toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}</h2>
+            <p className="eyebrow">{String(d.day || "")}{isToday ? (hi ? " · आज" : " · Today") : ""}</p>
+            <h2 className="display mt-2 text-4xl text-ivory sm:text-5xl">{new Date(p.date + "T00:00:00").toLocaleDateString(hi ? "hi-IN" : "en-IN", { day: "numeric", month: "long", year: "numeric" })}</h2>
             <p className="mt-2 flex items-center justify-center gap-1.5 text-sm text-mist"><MapPin className="h-4 w-4 text-gold" /> {p.place}</p>
-            {maah && <p className="mt-3 text-sm text-gold-2">{String(maah.purnimanta || "")} maas{d.paksha ? ` · ${String(d.paksha)}` : ""}{d.ritu ? ` · ${String(d.ritu)} ritu` : ""}</p>}
+            {maah && <p className="mt-3 text-sm text-gold-2">{String(maah.purnimanta || "")} {hi ? "मास" : "maas"}{d.paksha ? ` · ${String(d.paksha)}` : ""}{d.ritu ? ` · ${String(d.ritu)} ${hi ? "ऋतु" : "ritu"}` : ""}</p>}
             <div className="mt-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
               {[
-                { i: Sunrise, l: "Sunrise", v: clock(d.sunrise) },
-                { i: Sunset, l: "Sunset", v: clock(d.sunset) },
-                { i: Moon, l: "Moonrise", v: clock(d.moonrise) },
-                { i: Moon, l: "Moonset", v: clock(d.moonset) },
+                { i: Sunrise, l: hi ? "सूर्योदय" : "Sunrise", v: clock(d.sunrise) },
+                { i: Sunset, l: hi ? "सूर्यास्त" : "Sunset", v: clock(d.sunset) },
+                { i: Moon, l: hi ? "चंद्रोदय" : "Moonrise", v: clock(d.moonrise) },
+                { i: Moon, l: hi ? "चंद्रास्त" : "Moonset", v: clock(d.moonset) },
               ].map((x) => (
                 <div key={x.l} className="rounded-2xl border border-ink/[.07] bg-ink/[.025] p-3">
                   <x.i className="mx-auto h-5 w-5 text-gold" />
@@ -199,6 +277,78 @@ export function PanchangTool() {
               ))}
             </div>
           </div>
+
+          {/* travel */}
+          {(shool || nivas || abhijit?.start) && (
+            <div className="lux-card overflow-hidden p-5 sm:p-7">
+              <div className="flex items-center gap-2">
+                <Plane className="h-5 w-5 text-gold" />
+                <h3 className="font-display text-2xl text-ivory">{hi ? "यात्रा विचार" : "Travel guide"}</h3>
+              </div>
+              <p className="mt-1 text-sm text-mist">{hi ? "इस दिन कहीं जाना हो तो — किस दिशा में, कब निकलें" : "Going somewhere on this day? Which direction, and when to leave"}</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {shool && (
+                  <div className="rounded-2xl border border-rose/25 bg-rose/[.05] p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-rose"><XCircle className="h-4 w-4" /> {hi ? "इस दिशा में न जाएँ" : "Avoid this direction"} · {hi ? "दिशा शूल" : "Disha shool"}</div>
+                    <div className="mt-1 flex items-center gap-2 font-display text-3xl text-ivory"><Compass className="h-6 w-6 text-rose" /> {shool}</div>
+                    <p className="mt-2 text-[13px] leading-relaxed text-ivory-2">{ex("disha_shool")}</p>
+                    {remedy && remedy !== "-" && <p className="mt-2 text-[13px] text-ivory"><b>{hi ? "उपाय:" : "Remedy:"}</b> {remedy}</p>}
+                  </div>
+                )}
+                {nivas && (
+                  <div className="rounded-2xl border border-emerald/25 bg-emerald/[.05] p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-emerald"><CheckCircle2 className="h-4 w-4" /> {hi ? "चंद्रमा की दिशा" : "Moon's direction"} · {hi ? "चंद्र निवास" : "Chandra nivas"}</div>
+                    <div className="mt-1 flex items-center gap-2 font-display text-3xl text-ivory"><Moon className="h-6 w-6 text-emerald" /> {nivas}</div>
+                    <p className="mt-2 text-[13px] leading-relaxed text-ivory-2">{ex("moon_nivas")}</p>
+                  </div>
+                )}
+              </div>
+              <div className="mt-3 space-y-2">
+                {bestToLeave.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-2xl border border-emerald/30 bg-emerald/[.06] p-3">
+                    <span className="text-sm font-semibold text-emerald">✓ {hi ? "निकलने का सबसे अच्छा समय" : "Best time to set out"}</span>
+                    <span className="text-sm text-ivory">{bestToLeave.map((w) => `${clock(w.start)} – ${clock(w.end)}`).join(" , ")}</span>
+                  </div>
+                )}
+                {avoid.length > 0 && (
+                  <div className="rounded-2xl border border-rose/20 bg-rose/[.05] p-3">
+                    <span className="text-sm font-semibold text-rose">✕ {hi ? "इन समयों में यात्रा शुरू न करें" : "Don't set out at these times"}</span>
+                    <div className="mt-1.5 grid gap-1 text-sm text-ivory sm:grid-cols-3">
+                      {avoid.map(({ k, t }) => (
+                        <span key={k}><span className="text-mist">{KAAL_LABEL[k]}:</span> {clock(t!.start)} – {clock(t!.end)}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* good & bad times */}
+          <div className="lux-card p-5 sm:p-7">
+            <h3 className="font-display text-2xl text-ivory">{hi ? "शुभ और अशुभ समय" : "Good & bad times"}</h3>
+            <p className="mt-1 text-sm text-mist">{hi ? "हरा = शुभ, लाल = इसमें नया काम शुरू न करें" : "Green = auspicious, red = don't start anything new"}</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {(["abhijit_muhurta", "rahukaal", "yamghant_kaal", "guliKaal"] as const).map((k) => {
+                const t = timed(k);
+                if (!t?.start) return null;
+                const good = k === "abhijit_muhurta";
+                return (
+                  <div key={k} className={cn("rounded-2xl border p-4", good ? "border-emerald/30 bg-emerald/[.06]" : "border-rose/20 bg-rose/[.05]")}>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className={cn("flex items-center gap-1.5 text-sm font-semibold", good ? "text-emerald" : "text-rose")}>
+                        {good ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />} {KAAL_LABEL[k]}
+                      </span>
+                      <span className="whitespace-nowrap font-display text-lg text-ivory">{clock(t.start)} – {clock(t.end)}</span>
+                    </div>
+                    <p className="mt-2 text-[13px] leading-relaxed text-ivory-2">{ex(k)}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* the five limbs */}
           <div className="grid gap-4 sm:grid-cols-2">
             {five.map((f) => {
               const x = pick(f.k);
@@ -207,28 +357,17 @@ export function PanchangTool() {
                 <div key={f.k} className="lux-card p-5 sm:p-6">
                   <div className="text-[11px] uppercase tracking-[.18em] text-gold">{f.label}</div>
                   <div className="mt-1 font-display text-2xl text-ivory">{String(f.name(x) ?? "")}</div>
-                  {x.end_time && <div className="mt-1 flex items-center gap-1.5 text-xs text-mist"><Clock className="h-3.5 w-3.5" /> till {hm(x.end_time)}</div>}
+                  {x.end_time && <div className="mt-1 flex items-center gap-1.5 text-xs text-mist"><Clock className="h-3.5 w-3.5" /> {hi ? "समाप्ति" : "till"} {hm(x.end_time)}</div>}
+                  <p className="mt-3 flex gap-1.5 rounded-xl bg-gold/[.07] p-2.5 text-[12.5px] leading-relaxed text-ivory-2"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gold" /> {ex(f.k)}</p>
                   {f.more(x) && <p className="mt-3 text-sm leading-relaxed text-ivory-2">{String(f.more(x))}</p>}
                 </div>
               );
             })}
           </div>
+
           <div className="lux-card p-5 sm:p-7">
-            <h3 className="font-display text-2xl text-ivory">Muhurat & kaal</h3>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              {[["abhijit_muhurta", "Abhijit muhurat", true], ["rahukaal", "Rahu kaal", false], ["guliKaal", "Gulika kaal", false], ["yamghant_kaal", "Yamaganda", false]].map(([k, l, good]) => {
-                const t = timed(k as string);
-                if (!t?.start) return null;
-                return (
-                  <div key={k as string} className={cn("flex items-center justify-between rounded-2xl border p-3", good ? "border-emerald/30 bg-emerald/[.06]" : "border-rose/20 bg-rose/[.05]")}>
-                    <span className={cn("text-sm", good ? "text-emerald" : "text-rose")}>{l as string}</span>
-                    <span className="text-sm text-ivory">{clock(t.start)} – {clock(t.end)}</span>
-                  </div>
-                );
-              })}
-            </div>
-            <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
-              {[["sun_sign", "Sun sign"], ["moon_sign", "Moon sign"], ["vikram_samvat", "Vikram samvat"], ["shaka_samvat", "Shaka samvat"], ["disha_shool", "Disha shool"], ["ayana", "Ayana"], ["moon_nivas", "Moon nivas"], ["nak_shool", "Nakshatra shool"]]
+            <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+              {[["sun_sign", hi ? "सूर्य राशि" : "Sun sign"], ["moon_sign", hi ? "चंद्र राशि" : "Moon sign"], ["vikram_samvat", hi ? "विक्रम संवत" : "Vikram samvat"], ["shaka_samvat", hi ? "शक संवत" : "Shaka samvat"], ["ayana", hi ? "अयन" : "Ayana"]]
                 .filter(([k]) => d[k] !== undefined && typeof d[k] !== "object")
                 .map(([k, l]) => (
                   <div key={k} className="rounded-2xl border border-ink/[.07] bg-ink/[.025] p-3">
