@@ -179,7 +179,9 @@ export function PanchangTool() {
   const [lang, setLang] = useState<"en" | "hi">(site.default_language === "hi" ? "hi" : "en");
   const [date, setDate] = useState(istToday);
   const [p, setP] = useState<Panch | null>(null);
-  const [busy, setBusy] = useState(true);
+  const [busy, setBusy] = useState(false);
+  // nothing is fetched until the visitor asks — after the first look, changes refresh it
+  const [asked, setAsked] = useState(false);
   const [err, setErr] = useState("");
   const hi = lang === "hi";
   const ex = (k: string) => (EXPLAIN[k] ? EXPLAIN[k][lang] : "");
@@ -187,7 +189,7 @@ export function PanchangTool() {
   const thisYear = new Date().getFullYear();
 
   useEffect(() => {
-    if (!place) return;
+    if (!place || !asked) return;
     let alive = true;
     setBusy(true);
     setErr("");
@@ -198,7 +200,7 @@ export function PanchangTool() {
     return () => {
       alive = false;
     };
-  }, [place, lang, date]);
+  }, [place, lang, date, asked]);
 
   const d = (p?.data || {}) as Record<string, unknown>;
   const pick = (k: string) => d[k] as Detail | undefined;
@@ -253,6 +255,13 @@ export function PanchangTool() {
         ))}
       </div>
 
+      {!asked && (
+        <div className="mx-auto mt-5 max-w-xl">
+          <button type="button" onClick={() => setAsked(true)} disabled={!place} className="btn-gold w-full !py-3.5 text-base">
+            <Sparkles className="h-5 w-5" /> {hi ? "पंचांग देखें" : "Show Panchang"}
+          </button>
+        </div>
+      )}
       {err && <p className="mt-6 text-center text-sm text-amber"><AlertTriangle className="mr-1 inline h-4 w-4" />{err}</p>}
       {busy && !p && <div className="mt-10 flex justify-center"><Loader2 className="h-8 w-8 animate-spin text-gold" /></div>}
       {p && (
