@@ -95,7 +95,6 @@ contact, social), PDF branding, orders, free tools, site.
 | `APP_HMAC_SECRET`, `APP_LOCAL_DATA_KEY` | **exactly the same as `.env.local`** — they key the blind indexes / local encryption of data already in the DB |
 | `AWS_*`, `KM_S3_PREFIX`, `ASTRO_*`, `RAZORPAY_*`, `ZEPTO_*`, `FAST2SMS*`, `RESEND_*` | as in `.env.local` |
 | `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD` | first admin (created only if missing) |
-| `APP_URL`, `PUBLIC_BASE_URL` | `https://<your-domain>` |
 | `OTP_DRY_RUN` | `false` |
 
 The Aiven database `kundalimilan` is already set up (22 tables, reports, admin) — the first deploy will just report "up to date".
@@ -103,7 +102,7 @@ The Aiven database `kundalimilan` is already set up (22 tables, reports, admin) 
 ## Still to do before going live
 
 - Replace test Razorpay keys with live keys; add the webhook in the Razorpay dashboard.
-- Point `APP_URL` / `PUBLIC_BASE_URL` to the https domain (also lets PDFs use your uploaded logo).
+- The site address is detected automatically (Vercel production domain → your custom domain once connected). No URL env var needed; set `SITE_URL` only to force a different one.
 - Set `OTP_DRY_RUN=false` and register ASTRO-branded ZeptoMail / Fast2SMS DLT templates; verify a Resend sending domain.
 - Enable Premium Kundli / Varshphal / Numerology / Gemstone in Admin → Services once your AstrologyAPI plan includes them.
 - Have Privacy, Terms and Refund policy reviewed by counsel.

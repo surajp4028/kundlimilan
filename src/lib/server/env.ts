@@ -12,9 +12,28 @@ function int(key: string, fallback: number): number {
 
 export const isProd = process.env.NODE_ENV === "production";
 
+/** "https://x.com/\\ " → "https://x.com" (tolerates quotes, spaces, trailing / or \\). */
+const cleanOrigin = (v: string) => v.trim().replace(/^["']|["']$/g, "").replace(/[\\/\s]+$/, "");
+
+/**
+ * The site's public address — no env var needed:
+ *   1. SITE_URL / PUBLIC_BASE_URL / APP_URL if you set one (optional override)
+ *   2. on Vercel: the production domain (your custom domain once connected, else *.vercel.app) —
+ *      Vercel fills VERCEL_PROJECT_PRODUCTION_URL automatically; previews use VERCEL_URL
+ *   3. http://localhost:3000 for local development
+ */
+export function siteUrl(): string {
+  const set = str("SITE_URL") || str("PUBLIC_BASE_URL") || str("APP_URL");
+  if (set) return cleanOrigin(set);
+  const host = process.env.VERCEL_ENV === "production" ? str("VERCEL_PROJECT_PRODUCTION_URL") || str("VERCEL_URL") : str("VERCEL_URL");
+  if (host) return `https://${cleanOrigin(host).replace(/^https?:\/\//, "")}`;
+  return "http://localhost:3000";
+}
+
 export const env = {
   appNameDefault: str("APP_NAME_DEFAULT", "ASTRO"),
-  appUrl: str("APP_URL", "http://localhost:3000"),
+  /** see siteUrl() — kept for callers that read it once */
+  appUrl: siteUrl(),
 
   db: {
     host: str("DB_HOST", "127.0.0.1"),

@@ -15,7 +15,7 @@ import { astroPdf, downloadProviderPdf } from "./astro/client";
 import { palmReport, palmScan } from "./astro/palm";
 import { getObject, putObject, userKey } from "./storage";
 import { sendResendEmail } from "./notify";
-import { env } from "./env";
+import { env, siteUrl } from "./env";
 import { after } from "next/server";
 
 /* ---- background work that must survive the response (Vercel keeps the function alive via after()) ---- */
@@ -158,7 +158,7 @@ export async function confirmPayment(rzpOrderId: string, payment: RzpPayment, so
 
 async function branding() {
   const s = await getAllSettings();
-  const base = (process.env.PUBLIC_BASE_URL || env.appUrl).replace(/\/+$/, "");
+  const base = siteUrl();
   const autoLogo = s.logo_mode === "upload" && s.logo_key && base.startsWith("https://") ? `${base}/api/public/logo?v=${s.logo_version}` : "";
   return {
     company_name: s.pdf_company_name || s.site_name, company_info: s.pdf_company_info, domain_url: s.pdf_domain_url, footer_link: s.pdf_footer_link,
@@ -290,14 +290,14 @@ async function previousPalmId(ref: string): Promise<string | null> {
 }
 
 export function palmWebhookUrl(ref: string) {
-  const base = (process.env.PUBLIC_BASE_URL || env.appUrl).replace(/\/+$/, "");
+  const base = siteUrl();
   return `${base}/api/palm/webhook?ref=${ref}&sig=${signRef("palm-webhook", ref)}`;
 }
 
 async function generatePalmReport(o: OrderRow, input: Extract<OrderInput, { kind: "palm" }>, userId: number | null, fail: (e: string, r: boolean) => Promise<{ ok: false; error: string }>) {
   const ref = o.order_ref;
   const webhookUrl = palmWebhookUrl(ref);
-  if (!webhookUrl.startsWith("https://")) return fail("Palm reports need the site on a public https address (PUBLIC_BASE_URL)", false);
+  if (!webhookUrl.startsWith("https://")) return fail("Palm reports need the site on a public https address (they work on the live site, not on localhost)", false);
 
   let palmId = await previousPalmId(ref);
   if (!palmId) {
@@ -344,7 +344,7 @@ export async function notifyReportReady(ref: string, bytes?: Uint8Array) {
   const s = await getAllSettings();
   const name = (await decrypt(o.name_enc)) || "there";
   const subject = (await decrypt(o.subject_enc)) || "";
-  const base = (process.env.PUBLIC_BASE_URL || env.appUrl).replace(/\/+$/, "");
+  const base = siteUrl();
   const link = `${base}/account?tab=reports`;
   const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
   const attach = !!bytes && bytes.length < 7_000_000;
